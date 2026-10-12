@@ -347,24 +347,6 @@ async function main() {
     }
   });
 
-  await test('travel-assistant chat endpoint exists and validates input', async () => {
-    // Status endpoint always answers (even when the model is absent).
-    const status = await fetch(base + '/api/chat/status');
-    assert.equal(status.status, 200);
-    const st = await status.json();
-    assert.equal(typeof st.ok, 'boolean');
-    assert.equal(typeof st.model, 'string');
-
-    // An empty body must be rejected with 400, never a crash.
-    const bad = await fetch(base + '/api/chat', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ messages: [] })
-    });
-    assert.ok(bad.status === 400 || bad.status === 503,
-      'empty history should be 400, or 503 if the model is offline — got ' + bad.status);
-  });
-
   // A destination/package card must never show bare alt text when a photo is
   // meant to be there. The rendered cover uses an ABSOLUTE image path so it
   // resolves from any page depth, and carries an onerror handler that retries
@@ -566,68 +548,6 @@ async function main() {
     // The parked drawer must still be positioned off-canvas.
     assert.ok(/transform:\s*translateX\(10\dd?%\)/.test(css),
       'the closed drawer must remain parked off-canvas');
-  });
-
-  // REGRESSION: the offline fallback must answer from real data, never invent,
-  // and never return a random package for an unrelated question. This is what
-  // keeps the assistant useful on a free host with no Ollama.
-  await test('offline chat fallback answers from real data only', async () => {
-    const fallback = require('./src/travel-fallback');
-    const db = require('./src/db');
-    const query = { all: db.all, get: db.get };
-
-    // Cheapest package must equal the real minimum after discount.
-    const rows = db.all('SELECT price, discount FROM packages');
-    const realMin = Math.min(...rows.map((r) => Math.round(r.discount > 0 ? r.price - (r.price * r.discount) / 100 : r.price)));
-    const cheap = fallback.answer('what is the cheapest package?', query);
-    assert.strictEqual(cheap.intent, 'cheapest');
-    assert.ok(cheap.reply.includes(realMin.toLocaleString('en-US')),
-      `cheapest reply must quote the real minimum Rs.${realMin}`);
-
-    // Naming a package returns that package.
-    const poke = fallback.answer('tell me about the pokhara tour', query);
-    assert.ok(/pokhara/i.test(poke.reply), 'naming Pokhara must return the Pokhara package');
-
-    // Trekking intent must return a trekking package.
-    const trek = fallback.answer('do you have a trekking package?', query);
-    assert.strictEqual(trek.intent, 'trekking');
-    assert.ok(/trek/i.test(trek.reply), 'trekking intent must mention a trek');
-
-    // International is a LIST, not a single random package.
-    const intl = fallback.answer('international tours', query);
-    assert.strictEqual(intl.intent, 'international');
-    assert.ok(intl.reply.includes('international packages'), 'international must list packages');
-
-    // Country visa must resolve that country, not the generic blurb.
-    const ca = fallback.answer('visa for canada', query);
-    assert.strictEqual(ca.intent, 'visa-country');
-    assert.ok(/canada/i.test(ca.reply), 'Canada visa must name Canada');
-
-    // A greeting must NOT dump the whole catalogue.
-    const hi = fallback.answer('hello', query);
-    assert.strictEqual(hi.intent, 'greeting');
-    assert.ok(!hi.reply.includes('Rs.'), 'a greeting must not list prices');
-
-    // An unrelated question must never be answered with a package price.
-    const mars = fallback.answer('what is the weather on mars', query);
-    assert.strictEqual(mars.intent, 'unknown');
-    assert.ok(!mars.reply.includes('Rs.'), 'an unknown question must not quote a price');
-    assert.ok(mars.reply.includes('9800000000'), 'unknown must hand over to the team');
-
-    // Every price ever printed must exist in the database (no invention).
-    const printed = new Set();
-    for (const q of ['cheapest package?', 'trekking?', 'pokhara tour', 'thailand tour', 'international tours']) {
-      const r = fallback.answer(q, query);
-      for (const m of (r.reply || '').matchAll(/Rs\.[\d,]+/g)) printed.add(Number(m[0].replace(/[^\d]/g, '')));
-    }
-    const valid = new Set();
-    for (const p of db.all('SELECT price, discount FROM packages')) {
-      valid.add(Math.round(p.price));
-      if (p.discount > 0) valid.add(Math.round(p.price - (p.price * p.discount) / 100));
-    }
-    for (const amount of printed) {
-      assert.ok(valid.has(amount), `fallback printed Rs.${amount} which is not in the database`);
-    }
   });
 
   // Cleanup

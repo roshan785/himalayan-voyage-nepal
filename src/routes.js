@@ -16,7 +16,6 @@ const { all, get, run, slugify } = require('./db');
 const {
   verifyPassword, issueToken, requireAuth, findUserByEmail, TOKEN_COOKIE
 } = require('./auth');
-const chat = require('./chat');
 
 const SITE = {
   name: 'Himalayan Voyage Nepal',
@@ -211,31 +210,6 @@ function publicRouter() {
 
   router.get('/health', (_req, res) => {
     res.json({ ok: true, service: 'himalayan-voyage', uptime: process.uptime() });
-  });
-
-  // Travel-assistant chat (local Ollama, grounded in site data).
-  // Falls back to a database-grounded answerer when Ollama is unavailable, so
-  // the widget keeps working on hosts that cannot run a local model.
-  router.get('/chat/status', async (_req, res) => {
-    const s = await chat.status();
-    res.json({ ...s, fallbackAvailable: true, lastEngine: chat.getLastEngine() });
-  });
-
-  router.post('/chat', async (req, res) => {
-    try {
-      const result = await chat.chat(req.body && req.body.messages, { all, get });
-      res.json({ reply: result.reply, engine: result.engine });
-    } catch (err) {
-      const code = err.status || (String(err.message).startsWith('ollama') ? 503 : 500);
-      res.status(code).json({
-        error: err.message || 'Chat unavailable',
-        // On a hosted deployment Ollama is usually absent, so pointing at
-        // `ollama serve` would be useless advice. Offer the phone instead.
-        hint: code === 503
-          ? 'The assistant is offline — please use the contact form or call us.'
-          : undefined
-      });
-    }
   });
 
   router.get('/site', (_req, res) => res.json(SITE));

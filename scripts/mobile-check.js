@@ -37,6 +37,7 @@ const OUT_DIR = path.join(__dirname, '..', 'mobile-audit');
 
 // Real device viewports (CSS px), with touch enabled + mobile UA emulation.
 const DEVICES = [
+  { name: 'Android 360', width: 360, height: 800, dpr: 3 },
   { name: 'iPhone SE', width: 375, height: 667, dpr: 2 },
   { name: 'iPhone 14', width: 390, height: 844, dpr: 3 },
   { name: 'Pixel 7', width: 412, height: 915, dpr: 2.6 },

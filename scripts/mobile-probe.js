@@ -200,10 +200,6 @@
     navOpenable: navOpenable,
     navOpens: navOpens,
     hasToggleVisible: !!(toggle && getComputedStyle(toggle).display !== 'none'),
-    chatPanelW: (function () {
-      var cp = document.querySelector('.chat-panel');
-      return cp ? Math.round(cp.getBoundingClientRect().width) : null;
-    })(),
     overflowingImgs: overflowingImgs.slice(0, 5),
     docHeight: docEl.scrollHeight,
     title: document.title

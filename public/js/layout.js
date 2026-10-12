@@ -10,17 +10,6 @@
   const EMAIL = 'hello@himalayanvoyage.test';
   const ADDRESS = 'Lakeside Road, Pokhara, Nepal';
 
-  // Build stamp of THIS script (?v=...). Captured at parse time because
-  // document.currentScript is only set during synchronous execution — it is
-  // already null by the time DOMContentLoaded fires.
-  const SELF_VERSION = (function () {
-    try {
-      const src = document.currentScript && document.currentScript.src;
-      const m = src && src.match(/\?v=[^&]+/);
-      return m ? m[0] : '';
-    } catch (_err) { return ''; }
-  })();
-
   // Primary navigation. `children` renders a hover/click sub-menu (the same
   // pattern the reference layout uses for About and Visa).
   const NAV = [
@@ -208,23 +197,11 @@
     });
   }
 
-  /** Load the travel-assistant chat widget on every page (idempotent).
-   *  The ?v= stamp is copied from THIS script's own URL, so an upgraded widget
-   *  is never served from a stale cache (js is served immutable for a year). */
-  function loadChatWidget() {
-    if (document.getElementById('chat-fab')) return;
-    const s = document.createElement('script');
-    s.src = 'js/chat-widget.js' + SELF_VERSION;
-    s.defer = true;
-    document.body.appendChild(s);
-  }
-
   if (typeof document !== 'undefined') {
     if (document.readyState === 'loading') {
-      document.addEventListener('DOMContentLoaded', () => { mount(); loadChatWidget(); });
+      document.addEventListener('DOMContentLoaded', mount);
     } else {
       mount();
-      loadChatWidget();
     }
   }
 })();
