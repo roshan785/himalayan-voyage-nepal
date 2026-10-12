@@ -29,7 +29,7 @@
 
 * { box-sizing: border-box; }
 
-html { scroll-behavior: smooth; }
+html { scroll-behavior: smooth; scroll-padding-top: 84px; }
 
 body {
   margin: 0;
@@ -398,6 +398,7 @@ img { max-width: 100%; display: block; }
   aspect-ratio: 16 / 10;
   background: linear-gradient(150deg, #0b4f9e, #1e7be0);
   overflow: hidden;
+  contain: paint;
 }
 
 /* Real photograph inside a cover (falls back to the gradient if none). */
@@ -459,12 +460,12 @@ img { max-width: 100%; display: block; }
 /* Hover overlay — a tinted panel with a button + arrow badge that slides DOWN
    over the photo from the top edge. Present on every card type (destinations,
    packages, articles, gallery, team, visa); the parent .cover has
-   overflow:hidden and position:relative, so while the panel sits at bottom:100%
-   it is clipped out of view and only appears once hovered/focused. */
+   overflow:hidden and position:relative, so while the panel is translated above
+   the top edge it is clipped out of view and only appears once hovered/focused. */
 .desti-overlay {
   position: absolute;
   left: 0; right: 0;
-  bottom: 100%;
+  top: 0;
   height: 100%;
   display: flex;
   align-items: center;
@@ -472,11 +473,13 @@ img { max-width: 100%; display: block; }
   background: rgba(11, 79, 158, .44);
   opacity: 0;
   z-index: 3;
-  transition: opacity .45s var(--ease), bottom .45s var(--ease);
+  transform: translateY(-100%);
+  will-change: transform, opacity;
+  transition: opacity .45s var(--ease), transform .45s var(--ease);
 }
 .cover:hover .desti-overlay,
 .cover:focus-within .desti-overlay {
-  bottom: 0;
+  transform: translateY(0);
   opacity: 1;
 }
 /* The bottom caption fades out as the overlay drops in (as in the reference). */
@@ -598,7 +601,7 @@ img { max-width: 100%; display: block; }
 .tab {
   border: 1px solid var(--line); background: #fff; color: var(--body);
   padding: .5rem 1.1rem; border-radius: 999px; font: inherit; font-weight: 600;
-  font-size: .88rem; cursor: pointer; transition: all .18s var(--ease);
+  font-size: .88rem; cursor: pointer; transition: border-color .18s var(--ease), color .18s var(--ease), background .18s var(--ease);
 }
 .tab:hover { border-color: var(--brand); color: var(--brand); }
 .tab.is-active { background: var(--brand); border-color: var(--brand); color: #fff; }
@@ -818,30 +821,34 @@ img { max-width: 100%; display: block; }
 .btn--primary, .btn--accent { position: relative; overflow: hidden; }
 .btn--primary::after, .btn--accent::after {
   content: "";
-  position: absolute; top: 0; left: -140%;
+  position: absolute; top: 0; left: 0;
   width: 60%; height: 100%;
   background: linear-gradient(100deg, transparent, rgba(255, 255, 255, .42), transparent);
-  transform: skewX(-20deg);
-  transition: left .6s var(--ease);
+  transform: translateX(-240%) skewX(-20deg);
+  transition: transform .6s var(--ease);
+  will-change: transform;
 }
-.btn--primary:hover::after, .btn--accent:hover::after { left: 130%; }
+.btn--primary:hover::after, .btn--accent:hover::after { transform: translateX(230%) skewX(-20deg); }
 
 /* 6) Section heading underline grow */
 .sec-head h2 { position: relative; display: inline-block; }
 .sec-head h2::after {
-  content: ""; position: absolute; left: 50%; bottom: -10px; height: 3px; width: 0;
+  content: ""; position: absolute; left: 50%; bottom: -10px; height: 3px; width: 64px;
   background: linear-gradient(90deg, var(--brand), var(--accent));
-  border-radius: 2px; transform: translateX(-50%);
-  transition: width .7s var(--ease);
+  border-radius: 2px;
+  transform: translateX(-50%) scaleX(0);
+  transform-origin: 50% 50%;
+  transition: transform .7s var(--ease);
+  will-change: transform;
 }
-.sec-head.is-in h2::after, .section:target .sec-head h2::after { width: 64px; }
-.sec-head.reveal.is-in h2::after { width: 64px; }
+.sec-head.is-in h2::after, .section:target .sec-head h2::after { transform: translateX(-50%) scaleX(1); }
+.sec-head.reveal.is-in h2::after { transform: translateX(-50%) scaleX(1); }
 
 /* 7) Cover image ken-burns on card hover (already has scale, add filter) */
 .card:hover .cover__img { filter: saturate(1.12) contrast(1.04); }
 
 /* 8) Animated marquee strip */
-.marquee { overflow: hidden; background: var(--brand-dark); color: #cfe0f6; padding: 10px 0; }
+.marquee { overflow: hidden; contain: paint; background: var(--brand-dark); color: #cfe0f6; padding: 10px 0; }
 .marquee__track { display: flex; gap: 42px; white-space: nowrap; animation: marquee 26s linear infinite; }
 .marquee__track span { font-size: .88rem; display: inline-flex; align-items: center; gap: 8px; }
 @keyframes marquee { from { transform: translateX(0); } to { transform: translateX(-50%); } }
@@ -900,7 +907,7 @@ img { max-width: 100%; display: block; }
 .admin-side button {
   text-align: left; background: transparent; border: 0; color: #a7b6cd;
   font: inherit; font-weight: 600; font-size: .9rem; padding: .62rem .8rem;
-  border-radius: 9px; cursor: pointer; transition: all .16s var(--ease);
+  border-radius: 9px; cursor: pointer; transition: background .16s var(--ease), color .16s var(--ease);
 }
 .admin-side button:hover { background: rgba(255, 255, 255, .07); color: #fff; }
 .admin-side button.is-active { background: var(--brand); color: #fff; }
@@ -980,7 +987,7 @@ table.data td.wrap-cell { white-space: normal; min-width: 200px; }
 .chip {
   border: 1px solid var(--line); background: #fff; color: var(--body);
   border-radius: 999px; padding: .45rem .95rem; font-size: .84rem; font-weight: 600;
-  cursor: pointer; transition: all .2s var(--ease);
+  cursor: pointer; transition: border-color .2s var(--ease), color .2s var(--ease), background .2s var(--ease);
 }
 .chip:hover { border-color: var(--brand); color: var(--brand); }
 .chip.is-active { background: var(--brand); border-color: var(--brand); color: #fff; }
@@ -1072,7 +1079,7 @@ table.data td.wrap-cell { white-space: normal; min-width: 200px; }
   content: "";
   width: 10px; height: 10px; border-radius: 50%;
   background: rgba(255, 255, 255, .45);
-  transition: all .25s var(--ease);
+  transition: background .25s var(--ease), width .25s var(--ease), border-radius .25s var(--ease);
 }
 .hero-dots button.is-active { width: 52px; }
 .hero-dots button.is-active::before { background: #fff; width: 26px; border-radius: 999px; }

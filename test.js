@@ -390,10 +390,12 @@ async function main() {
       assert.ok(/desti:\s*true/.test(src), f + ' destination cards must enable the overlay');
     }
     const css = fs.readFileSync(path.join(__dirname, 'public', 'css', 'style.css'), 'utf8');
-    assert.ok(/\.desti-overlay\s*\{[^}]*bottom:\s*100%/.test(css),
-      'overlay must start above the card (bottom:100%) so it slides down');
-    assert.ok(/:hover\s+\.desti-overlay[^{]*\{[^}]*bottom:\s*0/.test(css),
-      'hover must bring the overlay down (bottom:0)');
+    // The overlay slides in with a GPU-friendly transform (translateY) rather
+    // than animating `bottom`, which would trigger layout on every frame.
+    assert.ok(/\.desti-overlay\s*\{[^}]*translateY\(-100%\)/.test(css),
+      'overlay must start above the card (translateY(-100%)) so it slides down');
+    assert.ok(/:hover\s+\.desti-overlay[^{]*\{[^}]*translateY\(0\)/.test(css),
+      'hover must bring the overlay down (translateY(0))');
     assert.ok(/prefers-reduced-motion/.test(css), 'animation must respect reduced motion');
   });
 
