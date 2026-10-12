@@ -19,7 +19,7 @@ const {
 
 const SITE = {
   name: 'Himalayan Voyage Nepal',
-  tagline: 'Discover Nepal & Explore the World',
+  tagline: 'Explore Nepal, Discover the World',
   phone: '+977 9800000000',
   email: 'hello@himalayanvoyage.test',
   address: 'Lakeside Road, Pokhara, Nepal',

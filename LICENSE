@@ -1,0 +1,29 @@
+Copyright (c) 2026 Himalayan Voyage Nepal
+
+APPLICATION CODE, HEADINGS, BODY COPY AND LOGO ARTWORK
+-------------------------------------------------------
+All application code, page headings, body copy and logo artwork in this
+repository are original works and are the property of the project author.
+They are provided "as is", without warranty of any kind, for demonstration
+purposes and as a starting point for building a real travel-agency website.
+You may reuse and modify them for your own project.
+
+PHOTOGRAPHS
+-----------
+The destination photographs under public/images/*.jpg are NOT covered by the
+above. Each photograph is a freely-licensed file from Wikimedia Commons and
+carries its own licence (Creative Commons Attribution / Attribution-ShareAlike
+or public domain) together with a named author. The full list of files,
+authors, licences and source URLs is recorded in:
+
+    public/images/credits.json
+
+Those licences require attribution. This project provides it next to each
+photograph and in the "Photo credits & licences" list in the site footer.
+If you redistribute or reuse the photographs, you must keep that attribution
+and comply with each photograph's individual licence.
+
+THIRD-PARTY SOFTWARE
+--------------------
+Runtime dependencies (express, bcryptjs, jsonwebtoken, pdfkit) are used under
+their own respective licences and are not vendored into this repository.
