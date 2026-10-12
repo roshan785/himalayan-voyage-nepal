@@ -25,6 +25,7 @@ module.exports = [
         // Browser
         window: 'readonly',
         document: 'readonly',
+        getComputedStyle: 'readonly',
         location: 'readonly',
         fetch: 'readonly',
         confirm: 'readonly',

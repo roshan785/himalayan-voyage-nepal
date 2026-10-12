@@ -545,6 +545,29 @@ async function main() {
       'layout.js must render .nav-item.has-sub > .submenu');
   });
 
+  // REGRESSION: on a phone the page must stay inside the viewport. The off-canvas
+  // nav drawer (position:fixed + translateX(105%)) used to widen the document by
+  // ~336px, which made every 100vw element (chat panel, hero) overshoot the screen
+  // and let the user pan sideways. `overflow-x: clip` on the root contains it —
+  // and unlike `hidden`, it does NOT break the sticky header. Verified with a real
+  // headless-Chrome audit (scripts/mobile-check.js) across 4 phones × 6 pages.
+  await test('mobile viewport is contained without breaking the sticky header', async () => {
+    const raw = fs.readFileSync(path.join(__dirname, 'public', 'css', 'style.css'), 'utf8');
+    // Strip comments first: the explanatory comment below legitimately MENTIONS
+    // overflow-x:hidden, and matching prose would be a false positive.
+    const css = raw.replace(/\/\*[\s\S]*?\*\//g, '');
+    // The containment rule must exist inside the mobile breakpoint…
+    const mobileBlock = css.slice(css.indexOf('@media (max-width: 980px)'));
+    assert.ok(/html,\s*body\s*\{\s*overflow-x:\s*clip/.test(mobileBlock),
+      'the mobile drawer must be contained with html,body{overflow-x:clip}');
+    // …and must NOT use `hidden`, which forces overflow-y:auto and kills sticky.
+    assert.ok(!/overflow-x:\s*hidden/.test(css),
+      'overflow-x:hidden silently breaks position:sticky — use clip instead');
+    // The parked drawer must still be positioned off-canvas.
+    assert.ok(/transform:\s*translateX\(10\dd?%\)/.test(css),
+      'the closed drawer must remain parked off-canvas');
+  });
+
   // REGRESSION: the offline fallback must answer from real data, never invent,
   // and never return a random package for an unrelated question. This is what
   // keeps the assistant useful on a free host with no Ollama.

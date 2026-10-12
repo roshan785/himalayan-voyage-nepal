@@ -219,52 +219,7 @@ travel-nepal/
 - Admin writes are confined to whitelisted columns via per-resource normalisers.
 - Error responses never leak stack traces.
 
-## Deploy free, right now (no credit card)
-
-The repo ships a `Dockerfile` plus configs for the free tiers of the common
-hosts. Node 22+ is required for the built-in `node:sqlite` module.
-
-**Render.com (easiest, free tier)** — verified working:
-
-1. <https://render.com> -> **New -> Blueprint** -> pick this repo.
-2. Render reads `render.yaml`, builds the Docker image and gives you
-   `https://<name>.onrender.com`.
-3. Set `ADMIN_PASSWORD` when prompted (it is marked `sync: false`, so you type
-   it in the dashboard - it is never stored in the repo).
-
-**Railway / Koyeb / Fly.io** - pick the repo, choose Dockerfile, expose port
-`3400`. `railway.json` is already configured.
-
-**Any Docker host:**
-
-```bash
-docker build -t hvn .
-docker run -p 3400:3400 -e JWT_SECRET=<long-random> -v hvn-data:/data hvn
-```
-
-### What works on free hosting - read this
-
-| Feature | Free cloud | Why |
-|---|---|---|
-| All 28 pages, API, admin CMS | Yes | Plain Express + SQLite |
-| Search / sort / gallery / PDFs | Yes | Static + server-rendered |
-| **AI travel assistant** | **Offline** | It calls a **local** Ollama at `127.0.0.1:11434`. Free hosts have no Ollama and cannot run a 7B model. The widget degrades gracefully: `POST /api/chat` answers **503** with a friendly "use the contact form" hint instead of crashing. |
-
-To restore the chatbot in the cloud you need an inference host that exposes an
-Ollama-compatible API - then set `OLLAMA_HOST=https://your-endpoint` and, if
-your endpoint needs auth, `CHAT_MODEL`. Pointing it at a paid GPU endpoint is
-the only part of this project that is **not** free.
-
-### Free-tier caveats
-
-- Free instances **sleep after ~15 min idle** and cold-start in ~30 s.
-- Free tiers have **no persistent disk**, so `data/travel.db` is recreated and
-  re-seeded on every deploy. Fine for a demo; for real data add a paid disk and
-  set `DB_PATH` to it.
-- Always set a real `JWT_SECRET`. If it is missing the app logs a warning and
-  falls back to an insecure development default.
-
-### Self-hosting (your own VPS)
+## Deployment
 
 1. Set a strong `JWT_SECRET` and change the admin password.
 2. Run behind a TLS-terminating reverse proxy (nginx/Caddy).
