@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Message From CEO | Himalayan Voyage Nepal</title>
+  <meta name="description" content="A message from the CEO of Himalayan Voyage Nepal on how we approach every journey.">
+  <link rel="stylesheet" href="css/style.css?v=22136a26">
+</head>
+<body>
+  <div id="site-header"></div>
+
+  <main>
+    <section class="hero hero--slim">
+      <div class="wrap"><div class="hero__inner">
+        <div class="breadcrumbs"><a href="index.html">Home</a> / <a href="about.html">About</a> / CEO Message</div>
+        <span class="eyebrow" style="color:#ffd08a">Leadership</span>
+        <h1>Message from the CEO</h1>
+        <p class="lead">Why we do this, and how we treat every traveller who trusts us with their journey.</p>
+      </div></div>
+    </section>
+
+    <section class="section">
+      <div class="wrap split" style="align-items:start">
+        <div class="reveal">
+          <div class="cover cover--photo" style="aspect-ratio:4/5;border-radius:14px" id="ceo-cover">
+            <img class="cover__img" src="images/kathmandu-heritage.jpg" alt="Kathmandu heritage">
+            <div class="desti-overlay"><a class="desti-cta" href="team.html"><span>Meet the Team</span><span class="desti-arrow" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span></a></div>
+          </div>
+          <p class="credit" id="ceo-credit"></p>
+        </div>
+        <div class="reveal">
+          <p class="quote__text" style="font-size:1.12rem">"Travel has helped us understand the meaning of life, and it has helped us become better people. Each time we travel, we see the world with new eyes."</p>
+          <p>When we opened our first desk in Pokhara, we had one rule: never sell a trip we would not take ourselves. That rule still decides everything \u2014 which hotels we recommend, which routes we suggest in which season, and when we tell a traveller that a plan simply will not work within their budget.</p>
+          <p>Nepal is not only Everest. It is the quiet of Rara Lake, the wide valley of Dhorpatan, the fog over the Annapurna foothills at dawn. Our job is to help you find the version of Nepal \u2014 or of the world \u2014 that is right for you, and then to remove every avoidable problem between you and that experience.</p>
+          <p>We are deliberately small. You will speak to the same person from your first enquiry to your return home, and that person answers the phone during your trip. That is the whole promise.</p>
+          <div class="quote__who" style="margin-top:18px">
+            <div class="avatar">RC</div>
+            <div><strong>Roshan Chau</strong><span>Chief Executive Officer</span></div>
+          </div>
+          <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:22px">
+            <a class="btn btn--primary" href="contact.html">Talk to Us</a>
+            <a class="btn btn--ghost" href="team.html">Meet the Team</a>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section section--alt">
+      <div class="wrap">
+        <div class="sec-head reveal">
+          <span class="eyebrow">Our Commitments</span>
+          <h2>What we promise</h2>
+        </div>
+        <div class="grid grid--3">
+          <article class="card"><div class="feature"><div class="feature__icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6 9 17l-5-5"/></svg></div><div><h3>Honest advice</h3><p>If a plan will not work within your budget or season, we say so before you pay.</p></div></div></article>
+          <article class="card"><div class="feature"><div class="feature__icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></div><div><h3>Reachable always</h3><p>One contact who answers during your trip \u2014 not a call centre.</p></div></div></article>
+          <article class="card"><div class="feature"><div class="feature__icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2 3 7v6c0 5 3.8 8.6 9 9 5.2-.4 9-4 9-9V7z"/></svg></div><div><h3>Safety first</h3><p>Licensed guides, real permits and insurance guidance on every adventure.</p></div></div></article>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <div id="site-footer"></div>
+
+  <script src="js/layout.js?v=216ae34c"></script>
+  <script src="js/main.js?v=6b0fbd9b"></script>
+  <script>
+    document.addEventListener('DOMContentLoaded', function () {
+      if (!window.App) return;
+      App.creditsReady().then(function () {
+        var el = document.getElementById('ceo-credit');
+        if (el) el.innerHTML = App.creditLine('kathmandu-heritage');
+      });
+    });
+  </script>
+</body>
+</html>

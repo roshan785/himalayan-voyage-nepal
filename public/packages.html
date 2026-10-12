@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Tour Packages | Himalayan Voyage Nepal</title>
+  <meta name="description" content="Browse domestic, international, historical, religious and trekking tour packages with clear pricing.">
+  <link rel="stylesheet" href="css/style.css?v=22136a26">
+</head>
+<body>
+  <div id="site-header"></div>
+
+  <main>
+    <section class="hero hero--slim">
+      <div class="wrap"><div class="hero__inner">
+        <div class="breadcrumbs"><a href="index.html">Home</a> / Packages</div>
+        <span class="eyebrow" style="color:#ffd08a">Tour Packages</span>
+        <h1>Find your next adventure</h1>
+        <p class="lead">Filter by category or search by destination. Every package includes clear inclusions and a per-person price.</p>
+      </div></div>
+    </section>
+
+    <section class="section">
+      <div class="wrap">
+        <div style="display:flex;flex-wrap:wrap;gap:14px;align-items:center;justify-content:space-between;margin-bottom:26px">
+          <div class="tabs" id="package-tabs" style="margin:0">
+            <button class="tab is-active" data-cat="all">All</button>
+            <button class="tab" data-cat="international">International</button>
+            <button class="tab" data-cat="domestic">Domestic</button>
+            <button class="tab" data-cat="historical">Historical</button>
+            <button class="tab" data-cat="religious">Religious</button>
+            <button class="tab" data-cat="trekking">Trekking</button>
+          </div>
+          <div class="field" style="min-width:240px">
+            <input type="search" id="package-search" placeholder="Search packages or destinations&hellip;" aria-label="Search packages">
+          </div>
+          <div class="toolbar__sort">
+            <label for="package-sort">Sort by</label>
+            <select id="package-sort" aria-label="Sort packages">
+              <option value="">Recommended</option>
+              <option value="price-asc">Price (low to high)</option>
+              <option value="price-desc">Price (high to low)</option>
+              <option value="rating">Top rated</option>
+            </select>
+          </div>
+        </div>
+
+        <div id="package-detail" class="hidden" style="margin-bottom:30px"></div>
+
+        <p class="muted small" id="package-count"></p>
+        <div class="grid grid--3" id="package-grid"></div>
+
+        <div class="custom-band reveal">
+          <div>
+            <h3>Didn&rsquo;t find the perfect package?</h3>
+            <p>Tell us your dates and budget &mdash; we&rsquo;ll design a trip built entirely around you.</p>
+          </div>
+          <a class="btn btn--light" href="contact.html">Build My Trip</a>
+        </div>
+      </div>
+    </section>
+
+    <section class="section--tight">
+      <div class="wrap">
+        <div class="cta-band reveal">
+          <div><h2>Need a custom itinerary?</h2><p>We'll build a package around your dates, group size and budget.</p></div>
+          <a class="btn btn--accent" href="contact.html">Request a Quote</a>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <div id="site-footer"></div>
+
+  <script src="js/layout.js?v=216ae34c"></script>
+  <script src="js/main.js?v=6b0fbd9b"></script>
+  <script src="js/packages.js?v=93e44c35"></script>
+</body>
+</html>

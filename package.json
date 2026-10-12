@@ -1,0 +1,26 @@
+{
+  "name": "himalayan-voyage-nepal",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Travel agency website — Nepal tours, international packages, trekking, and visa services. Original implementation with a JWT-protected admin CMS.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "seed": "node seed.js",
+    "test": "node test.js",
+    "docs": "node scripts/generate-docs.js",
+    "images": "node scripts/fetch-images.js",
+    "pages": "node scripts/generate-visa-pages.js",
+    "build:assets": "node scripts/fetch-images.js && node scripts/generate-docs.js && node scripts/generate-visa-pages.js && node scripts/bust-cache.js",
+    "version": "node scripts/bust-cache.js"
+  },
+  "dependencies": {
+    "bcryptjs": "^3.0.3",
+    "express": "^4.22.3",
+    "jsonwebtoken": "^9.0.3",
+    "pdfkit": "^0.20.2"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}

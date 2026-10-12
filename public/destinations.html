@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Destinations | Himalayan Voyage Nepal</title>
+  <meta name="description" content="Explore destinations across Nepal and around the world with Himalayan Voyage Nepal.">
+  <link rel="stylesheet" href="css/style.css?v=22136a26">
+</head>
+<body>
+  <div id="site-header"></div>
+
+  <main>
+    <section class="hero hero--slim">
+      <div class="wrap"><div class="hero__inner">
+        <div class="breadcrumbs"><a href="index.html">Home</a> / Destinations</div>
+        <span class="eyebrow" style="color:#ffd08a">Destinations</span>
+        <h1>Places worth the journey</h1>
+        <p class="lead">From Himalayan valleys to world capitals &mdash; browse destinations and jump straight to the packages that visit them.</p>
+      </div></div>
+    </section>
+
+    <section class="section">
+      <div class="wrap">
+        <div class="tabs" id="dest-tabs">
+          <button class="tab is-active" data-kind="all">All Destinations</button>
+          <button class="tab" data-kind="nepal">Nepal</button>
+          <button class="tab" data-kind="international">International</button>
+        </div>
+
+        <div class="toolbar" id="dest-toolbar">
+          <div class="toolbar__search">
+            <span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg></span>
+            <input type="search" id="dest-search" placeholder="Search destinations by name, region or keyword…" aria-label="Search destinations">
+          </div>
+          <div class="toolbar__sort">
+            <label for="dest-sort">Sort by</label>
+            <select id="dest-sort" aria-label="Sort destinations">
+              <option value="">Recommended</option>
+              <option value="name">Name (A–Z)</option>
+              <option value="rating">Top rated</option>
+            </select>
+          </div>
+          <span class="toolbar__count" id="dest-count"></span>
+        </div>
+
+        <div id="dest-detail" class="hidden" style="margin-bottom:30px"></div>
+
+        <div class="layout-side">
+          <div>
+            <div class="grid grid--3" id="dest-grid"></div>
+          </div>
+          <aside>
+            <div class="side-card">
+              <h3>Popular right now</h3>
+              <ul class="side-list">
+                <li><a href="destinations.html?slug=mustang"><span>Mustang</span><span class="n">Nepal</span></a></li>
+                <li><a href="destinations.html?slug=pokhara"><span>Pokhara</span><span class="n">Nepal</span></a></li>
+                <li><a href="destinations.html?slug=rara-lake"><span>Rara Lake</span><span class="n">Karnali</span></a></li>
+                <li><a href="destinations.html?slug=everest"><span>Everest Region</span><span class="n">Nepal</span></a></li>
+                <li><a href="destinations.html?slug=bangkok"><span>Bangkok</span><span class="n">Thailand</span></a></li>
+              </ul>
+            </div>
+            <div class="side-card">
+              <h3>Plan with confidence</h3>
+              <ul>
+                <li>Licensed, government-registered agency</li>
+                <li>Local guides across all 7 provinces</li>
+                <li>Flexible dates &amp; custom itineraries</li>
+                <li>24/7 support while you travel</li>
+              </ul>
+              <a class="btn btn--primary btn--sm" style="margin-top:12px" href="contact.html">Start Planning</a>
+            </div>
+            <div class="side-card">
+              <h3>Need a visa?</h3>
+              <p class="small muted" style="margin:0 0 10px">Checklists and assistance for 12 destination countries.</p>
+              <a class="btn btn--ghost btn--sm" href="visa.html">Visa Services &rarr;</a>
+            </div>
+          </aside>
+        </div>
+
+        <div class="custom-band reveal">
+          <div>
+            <h3>Didn&rsquo;t find the destination you wanted?</h3>
+            <p>Tell us where you dream of going &mdash; we build custom itineraries for any place, any season.</p>
+          </div>
+          <a class="btn btn--light" href="contact.html">Plan a Custom Trip</a>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <div id="site-footer"></div>
+
+  <script src="js/layout.js?v=216ae34c"></script>
+  <script src="js/main.js?v=6b0fbd9b"></script>
+  <script src="js/destinations.js?v=dc8144fa"></script>
+</body>
+</html>

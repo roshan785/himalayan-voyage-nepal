@@ -1,0 +1,442 @@
+{
+  "dhorpatan": {
+    "query": "Dhorpatan Nepal valley",
+    "file": "images/dhorpatan.jpg",
+    "title": "File:Periparus ater in Nepal.jpg",
+    "artist": "Joachim Martens and Siegfried Eck",
+    "license": "CC BY 3.0",
+    "source": "https://commons.wikimedia.org/wiki/File:Periparus_ater_in_Nepal.jpg"
+  },
+  "london": {
+    "query": "London Tower Bridge cityscape",
+    "file": "images/london.jpg",
+    "title": "File:London Thames Sunset panorama - Feb 2008.jpg",
+    "artist": "Diliff",
+    "license": "CC BY 3.0",
+    "source": "https://commons.wikimedia.org/wiki/File:London_Thames_Sunset_panorama_-_Feb_2008.jpg"
+  },
+  "tokyo": {
+    "query": "Tokyo skyline Japan",
+    "file": "images/tokyo.jpg",
+    "title": "File:Tokio skyline from Tokyo Metropolitan Government Building.jpg",
+    "artist": "Max221B",
+    "license": "CC BY-SA 4.0",
+    "source": "https://commons.wikimedia.org/wiki/File:Tokio_skyline_from_Tokyo_Metropolitan_Government_Building.jpg"
+  },
+  "bangkok": {
+    "query": "Bangkok temple Thailand",
+    "file": "images/bangkok.jpg",
+    "title": "File:Templo Wat Arun, Bangkok, Tailandia, 2013-08-22, DD 30.jpg",
+    "artist": "Diego Delso",
+    "license": "CC BY-SA 3.0",
+    "source": "https://commons.wikimedia.org/wiki/File:Templo_Wat_Arun,_Bangkok,_Tailandia,_2013-08-22,_DD_30.jpg"
+  },
+  "paris": {
+    "query": "Paris Eiffel Tower",
+    "file": "images/paris.jpg",
+    "title": "File:Champ de Mars from the Eiffel Tower - July 2006 edit.jpg",
+    "artist": "Diliff, edited by Fir0002",
+    "license": "CC BY 2.5",
+    "source": "https://commons.wikimedia.org/wiki/File:Champ_de_Mars_from_the_Eiffel_Tower_-_July_2006_edit.jpg"
+  },
+  "barcelona": {
+    "query": "Barcelona Sagrada Familia Spain",
+    "file": "images/barcelona.jpg",
+    "title": "File:Sagrada Familia March 2015-10a.jpg",
+    "artist": "Alvesgaspar",
+    "license": "CC BY-SA 4.0",
+    "source": "https://commons.wikimedia.org/wiki/File:Sagrada_Familia_March_2015-10a.jpg"
+  },
+  "rome": {
+    "query": "Rome Colosseum Italy",
+    "file": "images/rome.jpg",
+    "title": "File:Colosseum in Rome, Italy - April 2007.jpg",
+    "artist": "Diliff",
+    "license": "CC BY-SA 2.5",
+    "source": "https://commons.wikimedia.org/wiki/File:Colosseum_in_Rome,_Italy_-_April_2007.jpg"
+  },
+  "annapurna-base-camp": {
+    "query": "Annapurna Base Camp trek Nepal",
+    "file": "images/annapurna-base-camp.jpg",
+    "title": "File:Annapurna Base Camp with snow.jpg",
+    "artist": "Samdesherpa",
+    "license": "CC BY-SA 4.0",
+    "source": "https://commons.wikimedia.org/wiki/File:Annapurna_Base_Camp_with_snow.jpg"
+  },
+  "kathmandu-heritage": {
+    "query": "Boudhanath stupa Kathmandu Nepal",
+    "file": "images/kathmandu-heritage.jpg",
+    "title": "File:Boudhanath moonlight 2015-09-29.jpg",
+    "artist": "Christopher J. Fynn",
+    "license": "CC BY-SA 4.0",
+    "source": "https://commons.wikimedia.org/wiki/File:Boudhanath_moonlight_2015-09-29.jpg"
+  },
+  "rara-lake": {
+    "query": "Rara Lake Nepal",
+    "file": "images/rara-lake.jpg",
+    "title": "File:The Heavenly Rara Lake - edited 2.jpg",
+    "artist": "Prabeshsdev with additional fixes by Cart",
+    "license": "CC BY-SA 4.0",
+    "source": "https://commons.wikimedia.org/wiki/File:The_Heavenly_Rara_Lake_-_edited_2.jpg"
+  },
+  "mustang": {
+    "query": "Upper Mustang Nepal landscape",
+    "file": "images/mustang.jpg",
+    "title": "File:ACAP Upper Mustang Tangye.jpg",
+    "artist": "Patricia Sauer",
+    "license": "CC BY-SA 4.0",
+    "source": "https://commons.wikimedia.org/wiki/File:ACAP_Upper_Mustang_Tangye.jpg"
+  },
+  "ghandruk": {
+    "query": "Ghandruk village Annapurna Nepal",
+    "file": "images/ghandruk.jpg",
+    "title": "File:Ghandruk (1).JPG",
+    "artist": "Bijaya2043",
+    "license": "CC BY-SA 3.0",
+    "source": "https://commons.wikimedia.org/wiki/File:Ghandruk_(1).JPG"
+  },
+  "chitwan": {
+    "query": "Chitwan National Park rhinoceros",
+    "file": "images/chitwan.jpg",
+    "title": "File:Rhinoceros - Chitwan National Park - Nepal - 02 (13907428086).jpg",
+    "artist": "Adam Jones from Kelowna, BC, Canada",
+    "license": "CC BY-SA 2.0",
+    "source": "https://commons.wikimedia.org/wiki/File:Rhinoceros_-_Chitwan_National_Park_-_Nepal_-_02_(13907428086).jpg"
+  },
+  "muktinath-yatra": {
+    "query": "Muktinath temple Nepal",
+    "file": "images/muktinath-yatra.jpg",
+    "title": "File:Muktinath Temple, Mustang, Nepal.JPG",
+    "artist": "Ankitrimal",
+    "license": "CC BY-SA 3.0",
+    "source": "https://commons.wikimedia.org/wiki/File:Muktinath_Temple,_Mustang,_Nepal.JPG"
+  },
+  "thailand-holiday": {
+    "query": "Grand Palace Bangkok Thailand",
+    "file": "images/thailand-holiday.jpg",
+    "title": "File:A roof of a building at the Grand Palace, Bangkok, sunrise, 2017.jpg",
+    "artist": "Bjørn Erik Pedersen",
+    "license": "CC BY-SA 4.0",
+    "source": "https://commons.wikimedia.org/wiki/File:A_roof_of_a_building_at_the_Grand_Palace,_Bangkok,_sunrise,_2017.jpg"
+  },
+  "london-heritage": {
+    "query": "Stonehenge England",
+    "file": "images/london-heritage.jpg",
+    "title": "File:Stonehenge, Condado de Wiltshire, Inglaterra, 2014-08-12, DD 09.JPG",
+    "artist": "Diego Delso",
+    "license": "CC BY-SA 4.0",
+    "source": "https://commons.wikimedia.org/wiki/File:Stonehenge,_Condado_de_Wiltshire,_Inglaterra,_2014-08-12,_DD_09.JPG"
+  },
+  "bali-escape": {
+    "query": "Bali rice terrace Indonesia",
+    "file": "images/bali-escape.jpg",
+    "title": "File:Tabanan-Regency Indonesia Rice-paddies-05.jpg",
+    "artist": "CEphoto, Uwe Aranas",
+    "license": "CC BY-SA 3.0",
+    "source": "https://commons.wikimedia.org/wiki/File:Tabanan-Regency_Indonesia_Rice-paddies-05.jpg"
+  },
+  "hero-himalaya": {
+    "query": "Himalaya mountains Nepal panorama",
+    "file": "images/hero-himalaya.jpg",
+    "title": "File:Panorama Kangchenjunga range from Sikkim.jpg",
+    "artist": "Carsten.nebel",
+    "license": "CC BY-SA 3.0",
+    "source": "https://commons.wikimedia.org/wiki/File:Panorama_Kangchenjunga_range_from_Sikkim.jpg"
+  },
+  "everest": {
+    "query": "Mount Everest Nepal",
+    "file": "images/everest.jpg",
+    "title": "File:20110810 North Face of Everest Tibet China Panoramic.jpg",
+    "artist": "User:Ggia",
+    "license": "CC BY-SA 3.0",
+    "source": "https://commons.wikimedia.org/wiki/File:20110810_North_Face_of_Everest_Tibet_China_Panoramic.jpg"
+  },
+  "pokhara": {
+    "query": "Phewa Lake Pokhara Nepal",
+    "file": "images/pokhara.jpg",
+    "title": "File:Phewa Lake (फेवा ताल).JPG",
+    "artist": "Bijay chaurasia",
+    "license": "CC BY-SA 4.0",
+    "source": "https://commons.wikimedia.org/wiki/File:Phewa_Lake_(%E0%A4%AB%E0%A5%87%E0%A4%B5%E0%A4%BE_%E0%A4%A4%E0%A4%BE%E0%A4%B2).JPG"
+  },
+  "kathmandu-durbar": {
+    "query": "Kathmandu Durbar Square Nepal",
+    "file": "images/kathmandu-durbar.jpg",
+    "title": "File:Three saddhus at Kathmandu Durbar Square.jpg",
+    "artist": "Markus Koljonen (Dilaudid)",
+    "license": "CC BY-SA 3.0",
+    "source": "https://commons.wikimedia.org/wiki/File:Three_saddhus_at_Kathmandu_Durbar_Square.jpg"
+  },
+  "phewa-sunset": {
+    "query": "Phewa Lake sunset Nepal",
+    "file": "images/phewa-sunset.jpg",
+    "title": "File:Phewa Lake (फेवा ताल) Sunset View 2158.JPG",
+    "artist": "Bijay chaurasia",
+    "license": "CC BY-SA 4.0",
+    "source": "https://commons.wikimedia.org/wiki/File:Phewa_Lake_(%E0%A4%AB%E0%A5%87%E0%A4%B5%E0%A4%BE_%E0%A4%A4%E0%A4%BE%E0%A4%B2)_Sunset_View_2158.JPG"
+  },
+  "boudhanath": {
+    "query": "Boudhanath stupa Kathmandu",
+    "file": "images/boudhanath.jpg",
+    "title": "File:Boudhanath stupa, Kathmandu 01.jpg",
+    "artist": "Bernard Gagnon",
+    "license": "CC BY-SA 4.0",
+    "source": "https://commons.wikimedia.org/wiki/File:Boudhanath_stupa,_Kathmandu_01.jpg"
+  },
+  "pashupatinath": {
+    "query": "Pashupatinath temple Kathmandu",
+    "file": "images/pashupatinath.jpg",
+    "title": "File:Sadu Kathmandu Pashupatinath 2006 Luca Galuzzi.jpg",
+    "artist": "Luca Galuzzi (Lucag)",
+    "license": "CC BY-SA 2.5",
+    "source": "https://commons.wikimedia.org/wiki/File:Sadu_Kathmandu_Pashupatinath_2006_Luca_Galuzzi.jpg"
+  },
+  "patan-durbar": {
+    "query": "Patan Durbar Square Nepal",
+    "file": "images/patan-durbar.jpg",
+    "title": "File:Nepal Patan Mangal.jpg",
+    "artist": "Clemensmarabu",
+    "license": "CC BY-SA 3.0",
+    "source": "https://commons.wikimedia.org/wiki/File:Nepal_Patan_Mangal.jpg"
+  },
+  "bhaktapur": {
+    "query": "Bhaktapur Durbar Square Nepal",
+    "file": "images/bhaktapur.jpg",
+    "title": "File:Bhaktapur Durbar Square 4.jpg",
+    "artist": "Janak Bhatta",
+    "license": "CC BY-SA 4.0",
+    "source": "https://commons.wikimedia.org/wiki/File:Bhaktapur_Durbar_Square_4.jpg"
+  },
+  "langtang": {
+    "query": "Langtang valley Nepal mountains",
+    "file": "images/langtang.jpg",
+    "title": "File:Stupa in between Langtang valley and Kyanjin.jpg",
+    "artist": "Sunny Shrestha",
+    "license": "CC BY-SA 4.0",
+    "source": "https://commons.wikimedia.org/wiki/File:Stupa_in_between_Langtang_valley_and_Kyanjin.jpg"
+  },
+  "sagarmatha": {
+    "query": "Sagarmatha national park Nepal",
+    "file": "images/sagarmatha.jpg",
+    "title": "File:120408 Pheriche Pano 4k.jpg",
+    "artist": "Faj2323",
+    "license": "CC BY-SA 4.0",
+    "source": "https://commons.wikimedia.org/wiki/File:120408_Pheriche_Pano_4k.jpg"
+  },
+  "lumbini": {
+    "query": "Lumbini Nepal temple",
+    "file": "images/lumbini.jpg",
+    "title": "File:Maya Devi Lumbini.jpg",
+    "artist": "Wes Olson",
+    "license": "CC BY-SA 2.5",
+    "source": "https://commons.wikimedia.org/wiki/File:Maya_Devi_Lumbini.jpg"
+  },
+  "bandipur": {
+    "query": "Bandipur Nepal old town",
+    "file": "images/bandipur.jpg",
+    "title": "File:Mountain view from Bandipur, Nepal.jpg",
+    "artist": "Rajivkilanashrestha",
+    "license": "CC BY-SA 4.0",
+    "source": "https://commons.wikimedia.org/wiki/File:Mountain_view_from_Bandipur,_Nepal.jpg"
+  },
+  "ilam": {
+    "query": "Ilam tea garden Nepal",
+    "file": "images/ilam.jpg",
+    "title": "File:Ilam Tea Garden (19).jpg",
+    "artist": "Navina Dulal",
+    "license": "CC BY-SA 3.0",
+    "source": "https://commons.wikimedia.org/wiki/File:Ilam_Tea_Garden_(19).jpg"
+  },
+  "pokhara-lakeside": {
+    "query": "Phewa lake Pokhara boats",
+    "file": "images/pokhara-lakeside.jpg",
+    "title": "File:Phewa Lake Pokhara 01.jpg",
+    "artist": "Anuja Sharma",
+    "license": "CC BY-SA 4.0",
+    "source": "https://commons.wikimedia.org/wiki/File:Phewa_Lake_Pokhara_01.jpg"
+  },
+  "yak": {
+    "query": "Yak Nepal mountains",
+    "file": "images/yak.jpg",
+    "title": "File:Duglha yaks.jpg",
+    "artist": "Pavel Novak",
+    "license": "CC BY-SA 2.5",
+    "source": "https://commons.wikimedia.org/wiki/File:Duglha_yaks.jpg"
+  },
+  "prayer-flags": {
+    "query": "Prayer flags Nepal mountains",
+    "file": "images/prayer-flags.jpg",
+    "title": "File:Prayer Flags.jpg",
+    "artist": "w:Arnold Henry Savage Landor",
+    "license": "Public domain",
+    "source": "https://commons.wikimedia.org/wiki/File:Prayer_Flags.jpg"
+  },
+  "nepal-flag": {
+    "query": "Flag of Nepal",
+    "file": "images/nepal-flag.png",
+    "title": "File:Nuvola Nepal flag.svg",
+    "artist": "File:Flag of Nepal.svg: Drawn by User:SKopp File:Nuvola Template flag.svg: Orzetto derivative work NikNaks - gallery - wikipedia",
+    "license": "LGPL",
+    "source": "https://commons.wikimedia.org/wiki/File:Nuvola_Nepal_flag.svg"
+  },
+  "newyork": {
+    "query": "New York City skyline",
+    "file": "images/newyork.jpg",
+    "title": "File:Skyline-New-York-City.jpg",
+    "artist": "Martin Dürrschnabel (Martin-D1 of de.wikipedia.org)",
+    "license": "Public domain",
+    "source": "https://commons.wikimedia.org/wiki/File:Skyline-New-York-City.jpg"
+  },
+  "switzerland": {
+    "query": "Switzerland alps village",
+    "file": "images/switzerland.jpg",
+    "title": "File:Village and Alps, Bernese Oberland, Switzerland-LCCN2001702412.jpg",
+    "artist": "Photochrom Print Collection",
+    "license": "Public domain",
+    "source": "https://commons.wikimedia.org/wiki/File:Village_and_Alps,_Bernese_Oberland,_Switzerland-LCCN2001702412.jpg"
+  },
+  "himalayan-trek": {
+    "query": "Trekkers Himalaya Nepal trail",
+    "file": "images/himalayan-trek.jpg",
+    "title": "File:Going back from Everest Base Camp (15094746501).jpg",
+    "artist": "valcker from Paris",
+    "license": "CC BY 2.0",
+    "source": "https://commons.wikimedia.org/wiki/File:Going_back_from_Everest_Base_Camp_(15094746501).jpg"
+  },
+  "cultural-dance": {
+    "query": "Nepal cultural dance traditional",
+    "file": "images/cultural-dance.jpg",
+    "title": "File:Bayung Rai.jpg",
+    "artist": "Sechobayung",
+    "license": "CC BY-SA 3.0",
+    "source": "https://commons.wikimedia.org/wiki/File:Bayung_Rai.jpg"
+  },
+  "momo-food": {
+    "query": "Nepali food momo dumplings",
+    "file": "images/momo-food.jpg",
+    "title": "File:Steamed Momos - KOLKATA.jpg",
+    "artist": "TAPAS KUMAR HALDER",
+    "license": "CC BY-SA 4.0",
+    "source": "https://commons.wikimedia.org/wiki/File:Steamed_Momos_-_KOLKATA.jpg"
+  },
+  "everest-base-camp": {
+    "query": "Everest Base Camp trek",
+    "file": "images/everest-base-camp.png",
+    "title": "File:Everest Base Trek Route Map.svg",
+    "artist": "Goutam1962",
+    "license": "CC BY-SA 4.0",
+    "source": "https://commons.wikimedia.org/wiki/File:Everest_Base_Trek_Route_Map.svg"
+  },
+  "annapurna-panorama": {
+    "query": "Annapurna mountain range panorama",
+    "file": "images/annapurna-panorama.jpg",
+    "title": "File:Panorama from poonhill-2019-BJ.jpg",
+    "artist": "Bijay Chaurasia",
+    "license": "CC BY-SA 4.0",
+    "source": "https://commons.wikimedia.org/wiki/File:Panorama_from_poonhill-2019-BJ.jpg"
+  },
+  "dubai": {
+    "query": "Dubai skyline UAE",
+    "file": "images/dubai.jpg",
+    "title": "File:Dubai Skyline on 10 January 2008.jpg",
+    "artist": "Imre Solt",
+    "license": "CC BY-SA 3.0",
+    "source": "https://commons.wikimedia.org/wiki/File:Dubai_Skyline_on_10_January_2008.jpg"
+  },
+  "singapore": {
+    "query": "Singapore marina skyline",
+    "file": "images/singapore.jpg",
+    "title": "File:ArtScience Museum, Marina Bay Sands, Singapore.jpg",
+    "artist": "Basile Morin",
+    "license": "CC BY-SA 4.0",
+    "source": "https://commons.wikimedia.org/wiki/File:ArtScience_Museum,_Marina_Bay_Sands,_Singapore.jpg"
+  },
+  "kualalumpur": {
+    "query": "Kuala Lumpur Petronas towers",
+    "file": "images/kualalumpur.jpg",
+    "title": "File:2016 Kuala Lumpur, Petronas Towers (26).jpg",
+    "artist": "Marcin Konsek",
+    "license": "CC BY-SA 4.0",
+    "source": "https://commons.wikimedia.org/wiki/File:2016_Kuala_Lumpur,_Petronas_Towers_(26).jpg"
+  },
+  "sydney": {
+    "query": "Sydney Opera House Australia",
+    "file": "images/sydney.jpg",
+    "title": "File:Sydney Opera House - Dec 2008.jpg",
+    "artist": "Diliff",
+    "license": "CC BY-SA 3.0",
+    "source": "https://commons.wikimedia.org/wiki/File:Sydney_Opera_House_-_Dec_2008.jpg"
+  },
+  "sarangkot": {
+    "query": "Sarangkot sunrise Pokhara",
+    "file": "images/sarangkot.jpg",
+    "title": "File:Sunrise seen from atop the Sarangkot Hills.jpg",
+    "artist": "Yuming Nembang",
+    "license": "CC BY-SA 3.0",
+    "source": "https://commons.wikimedia.org/wiki/File:Sunrise_seen_from_atop_the_Sarangkot_Hills.jpg"
+  },
+  "paragliding": {
+    "query": "Paragliding Pokhara Nepal",
+    "file": "images/paragliding.jpg",
+    "title": "File:Pokhara Paragliding.jpg",
+    "artist": "Shiva Kumar Khanal",
+    "license": "CC BY-SA 3.0",
+    "source": "https://commons.wikimedia.org/wiki/File:Pokhara_Paragliding.jpg"
+  },
+  "canada": {
+    "query": "Toronto skyline Canada",
+    "file": "images/canada.jpg",
+    "title": "File:Toronto - ON - Skyline bei Nacht.jpg",
+    "artist": "Wladyslaw (talk)",
+    "license": "CC BY-SA 3.0",
+    "source": "https://commons.wikimedia.org/wiki/File:Toronto_-_ON_-_Skyline_bei_Nacht.jpg"
+  },
+  "china": {
+    "query": "Beijing Great Wall China",
+    "file": "images/china.jpg",
+    "title": "File:Great Wall of China July 2006.JPG",
+    "artist": "Velatrix",
+    "license": "CC0",
+    "source": "https://commons.wikimedia.org/wiki/File:Great_Wall_of_China_July_2006.JPG"
+  },
+  "turkey": {
+    "query": "Istanbul mosque Turkey",
+    "file": "images/turkey.jpg",
+    "title": "File:Blue Mosque Courtyard Dusk Wikimedia Commons.jpg",
+    "artist": "Benh LIEU SONG (Flickr)",
+    "license": "CC BY-SA 3.0",
+    "source": "https://commons.wikimedia.org/wiki/File:Blue_Mosque_Courtyard_Dusk_Wikimedia_Commons.jpg"
+  },
+  "hongkong": {
+    "query": "Hong Kong skyline Victoria Harbour",
+    "file": "images/hongkong.jpg",
+    "title": "File:Hong Kong Skyline Restitch - Dec 2007.jpg",
+    "artist": "Diliff",
+    "license": "CC BY 3.0",
+    "source": "https://commons.wikimedia.org/wiki/File:Hong_Kong_Skyline_Restitch_-_Dec_2007.jpg"
+  },
+  "best-time-nepal": {
+    "query": "Annapurna mountain range panorama",
+    "file": "images/annapurna-panorama.jpg",
+    "title": "File:Panorama from poonhill-2019-BJ.jpg",
+    "artist": "Bijay Chaurasia",
+    "license": "CC BY-SA 4.0",
+    "source": "https://commons.wikimedia.org/wiki/File:Panorama_from_poonhill-2019-BJ.jpg"
+  },
+  "top-destinations": {
+    "query": "Mount Everest Nepal",
+    "file": "images/everest.jpg",
+    "title": "File:20110810 North Face of Everest Tibet China Panoramic.jpg",
+    "artist": "User:Ggia",
+    "license": "CC BY-SA 3.0",
+    "source": "https://commons.wikimedia.org/wiki/File:20110810_North_Face_of_Everest_Tibet_China_Panoramic.jpg"
+  },
+  "visa-checklist": {
+    "query": "Boudhanath stupa Kathmandu Nepal",
+    "file": "images/kathmandu-heritage.jpg",
+    "title": "File:Boudhanath moonlight 2015-09-29.jpg",
+    "artist": "Christopher J. Fynn",
+    "license": "CC BY-SA 4.0",
+    "source": "https://commons.wikimedia.org/wiki/File:Boudhanath_moonlight_2015-09-29.jpg"
+  }
+}

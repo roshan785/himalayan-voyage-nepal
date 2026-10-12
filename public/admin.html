@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Admin Console | Himalayan Voyage Nepal</title>
+  <meta name="robots" content="noindex">
+  <link rel="stylesheet" href="css/style.css?v=22136a26">
+</head>
+<body>
+  <!-- Login view -->
+  <div id="admin-login">
+    <div class="login-panel">
+      <div class="brand" style="margin-bottom:18px">
+        <span class="brand__mark"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 20l6-11 4 6 3-4 5 9z"/></svg></span>
+        <span class="brand__text">Himalayan Voyage<small>Admin</small></span>
+      </div>
+      <h1 style="font-size:1.5rem">Sign in</h1>
+      <p class="muted small">Content management for packages, destinations, blog posts and enquiries.</p>
+      <form class="form" id="login-form">
+        <div class="field">
+          <label for="lg-email">Email</label>
+          <input id="lg-email" type="email" autocomplete="username" required>
+        </div>
+        <div class="field">
+          <label for="lg-password">Password</label>
+          <input id="lg-password" type="password" autocomplete="current-password" required>
+        </div>
+        <div class="form-note" id="login-note" role="status"></div>
+        <button class="btn btn--primary btn--block" type="submit" id="login-submit">Sign In</button>
+      </form>
+      <p class="small muted" style="margin-top:16px">Default dev credentials are in <code>.env.example</code> (admin@himalayanvoyage.test / admin12345). Change them before deploying.</p>
+      <p class="small"><a href="index.html">&larr; Back to website</a></p>
+    </div>
+  </div>
+
+  <!-- Console view -->
+  <div id="admin-console" class="admin-shell hidden">
+    <aside class="admin-side">
+      <h2>HV Admin</h2>
+      <nav id="admin-nav">
+        <button data-view="overview" class="is-active">Overview</button>
+        <button data-view="packages">Packages</button>
+        <button data-view="destinations">Destinations</button>
+        <button data-view="posts">Blog Posts</button>
+        <button data-view="testimonials">Testimonials</button>
+        <button data-view="contacts">Enquiries</button>
+        <button data-view="subscribers">Subscribers</button>
+      </nav>
+      <div style="margin-top:24px">
+        <button class="btn btn--light btn--sm btn--block" id="logout-btn">Sign Out</button>
+        <a class="btn btn--ghost btn--sm btn--block" href="index.html" style="margin-top:8px;color:#cfe0f6;box-shadow:inset 0 0 0 1.5px rgba(207,224,246,.4)">View Site</a>
+      </div>
+    </aside>
+
+    <section class="admin-main">
+      <div class="admin-top">
+        <h1 id="view-title" style="font-size:1.5rem;margin:0">Overview</h1>
+        <div style="display:flex;gap:10px;align-items:center">
+          <span class="muted small" id="who"></span>
+          <button class="btn btn--primary btn--sm hidden" id="new-btn">+ New</button>
+        </div>
+      </div>
+      <div id="view"></div>
+    </section>
+  </div>
+
+  <!-- Editor dialog -->
+  <div class="dialog-backdrop" id="editor-backdrop">
+    <div class="dialog">
+      <div class="dialog__head">
+        <h3 id="editor-title" style="margin:0">Edit</h3>
+        <button class="dialog__close" id="editor-close" aria-label="Close">&times;</button>
+      </div>
+      <form class="form" id="editor-form"></form>
+      <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:16px">
+        <button class="btn btn--ghost btn--sm" id="editor-cancel">Cancel</button>
+        <button class="btn btn--primary btn--sm" id="editor-save">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="js/main.js?v=6b0fbd9b"></script>
+  <script src="js/admin.js?v=3ae13420"></script>
+</body>
+</html>

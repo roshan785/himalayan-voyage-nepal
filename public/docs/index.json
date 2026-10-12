@@ -1,0 +1,131 @@
+{
+  "generatedAt": "2026-10-12T11:30:58.971Z",
+  "counts": {
+    "itineraries": 8,
+    "visaChecklists": 12,
+    "brochures": 1,
+    "total": 21
+  },
+  "itineraries": [
+    {
+      "slug": "pokhara-leisure-tour",
+      "title": "Pokhara Leisure Tour",
+      "file": "docs/pokhara-leisure-tour.pdf"
+    },
+    {
+      "slug": "annapurna-base-camp-trek",
+      "title": "Annapurna Base Camp Trek",
+      "file": "docs/annapurna-base-camp-trek.pdf"
+    },
+    {
+      "slug": "chitwan-jungle-safari",
+      "title": "Chitwan Jungle Safari",
+      "file": "docs/chitwan-jungle-safari.pdf"
+    },
+    {
+      "slug": "kathmandu-heritage-culture-tour",
+      "title": "Kathmandu Heritage & Culture Tour",
+      "file": "docs/kathmandu-heritage-culture-tour.pdf"
+    },
+    {
+      "slug": "pashupatinath-muktinath-yatra",
+      "title": "Pashupatinath & Muktinath Yatra",
+      "file": "docs/pashupatinath-muktinath-yatra.pdf"
+    },
+    {
+      "slug": "amazing-thailand-holiday",
+      "title": "Amazing Thailand Holiday",
+      "file": "docs/amazing-thailand-holiday.pdf"
+    },
+    {
+      "slug": "london-heritage-culture-tour",
+      "title": "London Heritage & Culture Tour",
+      "file": "docs/london-heritage-culture-tour.pdf"
+    },
+    {
+      "slug": "bali-island-escape",
+      "title": "Bali Island Escape",
+      "file": "docs/bali-island-escape.pdf"
+    }
+  ],
+  "visaChecklists": [
+    {
+      "slug": "usa",
+      "label": "America",
+      "region": "United States",
+      "file": "docs/visa-usa.pdf"
+    },
+    {
+      "slug": "canada",
+      "label": "Canada",
+      "region": "Canada",
+      "file": "docs/visa-canada.pdf"
+    },
+    {
+      "slug": "uk",
+      "label": "UK",
+      "region": "United Kingdom",
+      "file": "docs/visa-uk.pdf"
+    },
+    {
+      "slug": "europe",
+      "label": "Europe",
+      "region": "Schengen Area",
+      "file": "docs/visa-europe.pdf"
+    },
+    {
+      "slug": "japan",
+      "label": "Japan",
+      "region": "Japan",
+      "file": "docs/visa-japan.pdf"
+    },
+    {
+      "slug": "china",
+      "label": "China",
+      "region": "China",
+      "file": "docs/visa-china.pdf"
+    },
+    {
+      "slug": "thailand",
+      "label": "Thailand",
+      "region": "Thailand",
+      "file": "docs/visa-thailand.pdf"
+    },
+    {
+      "slug": "bali",
+      "label": "Bali",
+      "region": "Indonesia",
+      "file": "docs/visa-bali.pdf"
+    },
+    {
+      "slug": "malaysia",
+      "label": "Malaysia",
+      "region": "Malaysia",
+      "file": "docs/visa-malaysia.pdf"
+    },
+    {
+      "slug": "turkey",
+      "label": "Turkey",
+      "region": "Turkey",
+      "file": "docs/visa-turkey.pdf"
+    },
+    {
+      "slug": "hong-kong",
+      "label": "Hong Kong",
+      "region": "Hong Kong SAR",
+      "file": "docs/visa-hong-kong.pdf"
+    },
+    {
+      "slug": "australia",
+      "label": "Australia",
+      "region": "Australia",
+      "file": "docs/visa-australia.pdf"
+    }
+  ],
+  "brochures": [
+    {
+      "title": "Company Profile",
+      "file": "docs/company-profile.pdf"
+    }
+  ]
+}
