@@ -226,7 +226,11 @@ function publicRouter() {
       const code = err.status || (String(err.message).startsWith('ollama') ? 503 : 500);
       res.status(code).json({
         error: err.message || 'Chat unavailable',
-        hint: code === 503 ? 'Make sure Ollama is running: ollama serve' : undefined
+        // On a hosted deployment Ollama is usually absent, so pointing at
+        // `ollama serve` would be useless advice. Offer the phone instead.
+        hint: code === 503
+          ? 'The assistant is offline — please use the contact form or call us.'
+          : undefined
       });
     }
   });

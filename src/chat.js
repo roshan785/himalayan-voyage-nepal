@@ -83,10 +83,29 @@ async function askOllama(messages) {
     });
     if (!res.ok) {
       const text = await res.text().catch(() => '');
-      throw new Error('ollama HTTP ' + res.status + (text ? ': ' + text.slice(0, 120) : ''));
+      // 404 usually means the model was never pulled — surface that as 503 so
+      // the widget can show actionable advice instead of a generic server error.
+      const status = res.status === 404 ? 503 : 502;
+      throw Object.assign(
+        new Error('ollama HTTP ' + res.status + (text ? ': ' + text.slice(0, 120) : '')),
+        { status }
+      );
     }
     const data = await res.json();
     return (data.message && data.message.content) || '';
+  } catch (err) {
+    // A transport failure (Ollama not running, host unreachable, timeout) arrives
+    // as a bare "fetch failed" / AbortError with no HTTP status. Without this tag
+    // the route reports a confusing 500 — and on a cloud host where Ollama is
+    // simply absent, that is the normal, expected case. Tag it 503 + a clear
+    // reason so the UI can tell the visitor the assistant is offline.
+    if (!err.status) {
+      const reason = err.name === 'AbortError'
+        ? 'The assistant timed out.'
+        : 'The travel assistant is offline right now.';
+      throw Object.assign(new Error(reason), { status: 503, cause: err });
+    }
+    throw err;
   } finally {
     clearTimeout(timer);
   }
