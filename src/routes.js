@@ -214,14 +214,17 @@ function publicRouter() {
   });
 
   // Travel-assistant chat (local Ollama, grounded in site data).
+  // Falls back to a database-grounded answerer when Ollama is unavailable, so
+  // the widget keeps working on hosts that cannot run a local model.
   router.get('/chat/status', async (_req, res) => {
-    res.json(await chat.status());
+    const s = await chat.status();
+    res.json({ ...s, fallbackAvailable: true, lastEngine: chat.getLastEngine() });
   });
 
   router.post('/chat', async (req, res) => {
     try {
-      const reply = await chat.chat(req.body && req.body.messages, { all, get });
-      res.json({ reply });
+      const result = await chat.chat(req.body && req.body.messages, { all, get });
+      res.json({ reply: result.reply, engine: result.engine });
     } catch (err) {
       const code = err.status || (String(err.message).startsWith('ollama') ? 503 : 500);
       res.status(code).json({

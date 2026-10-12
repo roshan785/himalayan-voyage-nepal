@@ -19,6 +19,8 @@ const REQUEST_TIMEOUT_MS = Number(process.env.CHAT_TIMEOUT_MS) || 45000;
 const MAX_MESSAGES = 12;     // keep the rolling history short (small context)
 const MAX_CHARS = 800;       // per user message
 
+const fallback = require('./travel-fallback');
+
 /** Build a short factual snapshot of the site so the model answers accurately. */
 function buildContext(query) {
   const packages = query.all(
@@ -131,8 +133,20 @@ async function status() {
 }
 
 /**
+ * Which engine answered the last turn. Exposed so /api/chat/status can be
+ * honest about whether the model or the offline fallback is in use.
+ */
+let lastEngine = null;
+
+/**
  * Handle one chat turn. `messages` is the raw client array; it is validated,
  * trimmed and prefixed with the grounded system prompt.
+ *
+ * Strategy: ask the local Ollama model (best answers, understands free text).
+ * If Ollama is not running — the normal situation on a free cloud host — fall
+ * back to the deterministic, database-grounded answerer so the assistant keeps
+ * working instead of going dark. The fallback is also used for the very first
+ * message when the model is slow, so visitors get an instant grounded reply.
  */
 async function chat(history, query) {
   const clean = (Array.isArray(history) ? history : [])
@@ -144,10 +158,34 @@ async function chat(history, query) {
     throw Object.assign(new Error('A user message is required'), { status: 400 });
   }
 
-  const messages = [{ role: 'system', content: systemPrompt(buildContext(query)) }].concat(clean);
-  const reply = await askOllama(messages);
-  if (!reply.trim()) throw Object.assign(new Error('The assistant did not return a reply'), { status: 502 });
-  return reply.trim();
+  const last = clean[clean.length - 1].content;
+
+  // Try the model. Anything that stops it (not installed, not running, slow)
+  // drops us into the grounded fallback rather than failing the request.
+  let modelError = null;
+  try {
+    const messages = [{ role: 'system', content: systemPrompt(buildContext(query)) }].concat(clean);
+    const reply = await askOllama(messages);
+    if (reply.trim()) {
+      lastEngine = 'ollama';
+      return { reply: reply.trim(), engine: 'ollama' };
+    }
+    modelError = 'empty reply';
+  } catch (err) {
+    modelError = err.message;
+  }
+
+  const fb = fallback.answer(last, query);
+  if (fb.reply) {
+    lastEngine = 'fallback';
+    return { reply: fb.reply, engine: 'fallback' };
+  }
+
+  // Nothing could answer — report the model failure honestly.
+  throw Object.assign(new Error('The travel assistant is offline right now.'), {
+    status: 503,
+    cause: modelError
+  });
 }
 
-module.exports = { chat, status, buildContext, OLLAMA_MODEL };
+module.exports = { chat, status, buildContext, OLLAMA_MODEL, getLastEngine: () => lastEngine };

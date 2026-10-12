@@ -131,7 +131,11 @@
     function addMessage(container, kind, text) {
       const cls = kind === 'user' ? 'chat-msg chat-msg--user'
         : kind === 'error' ? 'chat-msg chat-msg--err' : 'chat-msg chat-msg--bot';
-      container.appendChild(el('div', cls, App.escapeHtml(text)));
+      const node = el('div', cls);
+      // Escape first (never trust model output), then allow ONLY **bold** so a
+      // stray asterisk cannot become markup. Everything else stays literal.
+      node.innerHTML = App.escapeHtml(text).replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>');
+      container.appendChild(node);
       container.scrollTop = container.scrollHeight;
     }
   }
