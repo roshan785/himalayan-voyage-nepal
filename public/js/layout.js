@@ -7,7 +7,7 @@
 
 (function () {
   const PHONE = '+977 9800000000';
-  const EMAIL = 'hello@himalayanvoyage.test';
+  const EMAIL = 'roshantharu850me@gmail.com';
   const ADDRESS = 'Lakeside Road, Pokhara, Nepal';
 
   // Primary navigation. `children` renders a hover/click sub-menu (the same

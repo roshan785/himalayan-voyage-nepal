@@ -30,7 +30,7 @@ const COMPANY = {
   name: 'Himalayan Voyage Nepal',
   tagline: 'Explore Nepal, Discover the World',
   phone: '+977 9800000000',
-  email: 'hello@himalayanvoyage.test',
+  email: 'roshantharu850me@gmail.com',
   address: 'Lakeside Road, Pokhara, Nepal',
   web: 'himalayanvoyage.test'
 };
