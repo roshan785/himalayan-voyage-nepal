@@ -96,6 +96,27 @@ function fingerprint(rows, columns) {
       if (rows.length === 0) { report.push({ table, sqlite: 0, pg: pgCount, action: 'skipped (empty)' }); continue; }
       if (pgCount === rows.length && !FORCE) { report.push({ table, sqlite: rows.length, pg: pgCount, action: 'skipped (already migrated)' }); continue; }
 
+      // SAFETY GUARD — never destroy data that is already in the target.
+      // The import replaces the target table, so it is only safe when the target
+      // is empty (a fresh database) or holds fewer rows than the source (a
+      // partial earlier import). If the target holds MORE rows than the source,
+      // it is a live database with data we did not come from: refuse and stop.
+      if (pgCount > 0 && pgCount > rows.length && !FORCE) {
+        report.push({ table, sqlite: rows.length, pg: pgCount, action: 'REFUSED (target has more rows)' });
+        throw new Error(
+          `Refusing to overwrite "${table}": the target database already holds ${pgCount} rows ` +
+          `but the source only has ${rows.length}. This looks like a live database. ` +
+          `Export it first, then re-run with --force only if you are certain.`
+        );
+      }
+      // --force on a non-empty target is an explicit, deliberate override.
+      if (pgCount > 0 && FORCE && !process.env.I_UNDERSTAND_THIS_REPLACES_DATA) {
+        throw new Error(
+          `--force would replace ${pgCount} existing rows in "${table}". ` +
+          `Set I_UNDERSTAND_THIS_REPLACES_DATA=1 as well if that is really intended.`
+        );
+      }
+
       const columns = Object.keys(rows[0]);
       const colList = columns.map((c) => `"${c}"`).join(', ');
       const placeholders = columns.map((_c, i) => `$${i + 1}`).join(', ');

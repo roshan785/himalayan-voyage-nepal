@@ -114,3 +114,34 @@ process**, boots a second one against the same storage, and re-reads the rows.
     npm run admin:pass -- 'NewPasswordHere' admin@example.com
 
 Works against whichever driver is active.
+
+---
+
+## Safety guarantees (verified)
+
+The import replaces a target table, so it refuses to run when that could destroy
+data you did not come from. Behaviour proven locally with four scenarios:
+
+| Scenario | Result |
+|---|---|
+| Fresh (empty) target | imports all tables ✅ |
+| Re-run with identical counts | skips every table (no TRUNCATE) ✅ |
+| **Target has MORE rows than source** | **REFUSES** — "looks like a live database" ✅ |
+| `--force` on a non-empty target | still refuses unless `I_UNDERSTAND_THIS_REPLACES_DATA=1` ✅ |
+
+`npm run migrate:verify` is completely read-only — it never writes, and was
+checked against a modified target to confirm the rows were untouched.
+
+## Pre-flight checklist
+
+1. Take a backup whose integrity you have verified:
+   ```bash
+   sqlite3 data/travel.db ".backup 'backups/source-$(date +%s).db'"
+   sqlite3 backups/source-*.db "PRAGMA integrity_check;"
+   ```
+2. Confirm the SOURCE is the file you think it is: `data/travel.db` (or the
+   path in `DB_PATH`). Row counts: users/destinations/packages/testimonials/
+   blog_posts/contacts/subscribers/bookings.
+3. Run `npm run migrate:verify` first — it reports MATCH/MISMATCH for every
+   table without writing anything.
+4. Only then run `npm run migrate:pg`.

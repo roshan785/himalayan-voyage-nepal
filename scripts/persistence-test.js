@@ -15,6 +15,7 @@
  */
 
 const path = require('path');
+const fs = require('fs');
 const os = require('os');
 const crypto = require('crypto');
 const { spawn } = require('node:child_process');
@@ -22,10 +23,18 @@ const { spawn } = require('node:child_process');
 const IS_PG = /^postgres(ql)?:\/\//i.test(process.env.DATABASE_URL || '');
 const marker = 'PERSIST-' + crypto.randomBytes(4).toString('hex');
 
+// The test OWNS the admin credentials for its run: it provisions the account
+// itself (below) and passes the same values into every child process. Without
+// this the spawned server would seed the admin from a .env file whose password
+// the test does not know, and the login assertion would 401 through no fault of
+// the app.
+const ADMIN_EMAIL = (process.env.ADMIN_EMAIL || 'admin@himalayanvoyage.test').toLowerCase();
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'admin12345';
+
 function boot(env) {
   return new Promise((resolve, reject) => {
     const child = spawn(process.execPath, [path.join(__dirname, '..', 'server.js')], {
-      env: { ...process.env, ...env, PORT: '0' },
+      env: { ...process.env, ...env, PORT: '0', ADMIN_EMAIL, ADMIN_PASSWORD },
       stdio: ['ignore', 'pipe', 'pipe']
     });
     let out = '';
@@ -52,7 +61,19 @@ async function j(method, url, body, token) {
 
 (async () => {
   const mode = IS_PG ? 'PostgreSQL' : 'SQLite';
-  const env = IS_PG ? {} : { DB_PATH: path.join(os.tmpdir(), `hv-persist-${Date.now()}.db`) };
+  // SQLite default: run against a COPY of the real database, so the test always
+  // exercises genuine data but can never mutate the live file. Pass DB_PATH
+  // explicitly to override.
+  const env = IS_PG ? {} : { DB_PATH: process.env.DB_PATH || path.join(os.tmpdir(), `hv-persist-${Date.now()}.db`) };
+  if (!IS_PG && !process.env.DB_PATH) {
+    const source = path.join(__dirname, '..', 'data', 'travel.db');
+    if (fs.existsSync(source)) {
+      fs.copyFileSync(source, env.DB_PATH);
+      console.log(`(copied the real database to ${env.DB_PATH} — the original is never touched)`);
+    } else {
+      console.log('(no existing database — a fresh one will be created)');
+    }
+  }
   console.log(`\n=== Persistence test (${mode}) ===`);
   if (!IS_PG) console.log('db file: ' + env.DB_PATH);
 
@@ -61,8 +82,20 @@ async function j(method, url, body, token) {
   console.log('boot #1 ok on port ' + a.port);
   const base1 = `http://127.0.0.1:${a.port}`;
 
+  // Provision the admin for THIS database. `ensureAdmin()` only creates a user
+  // when the table is empty, so for an already-populated database we set the
+  // password explicitly via the app's own reset CLI — that guarantees the test
+  // can log in regardless of what the database (or a .env file) previously had.
+  const { spawnSync } = require('node:child_process');
+  const provision = spawnSync(process.execPath,
+    [path.join(__dirname, 'admin-password.js'), ADMIN_PASSWORD, ADMIN_EMAIL],
+    { env: { ...process.env, ...env, ADMIN_EMAIL, ADMIN_PASSWORD }, encoding: 'utf8' });
+  if (provision.status !== 0) {
+    throw new Error('could not provision the admin account: ' + (provision.stderr || provision.stdout));
+  }
+
   const login = await j('POST', base1 + '/api/auth/login',
-    { email: process.env.ADMIN_EMAIL || 'admin@himalayanvoyage.test', password: process.env.ADMIN_PASSWORD || 'admin12345' });
+    { email: ADMIN_EMAIL, password: ADMIN_PASSWORD });
   if (login.status !== 200) throw new Error('admin login failed: ' + login.status);
   const token = login.data.token;
 
@@ -99,7 +132,7 @@ async function j(method, url, body, token) {
   const priceOk = Number(reread.data.item.price) === newPrice;
 
   const login2 = await j('POST', base2 + '/api/auth/login',
-    { email: process.env.ADMIN_EMAIL || 'admin@himalayanvoyage.test', password: process.env.ADMIN_PASSWORD || 'admin12345' });
+    { email: ADMIN_EMAIL, password: ADMIN_PASSWORD });
   const bookings2 = await j('GET', base2 + '/api/admin/bookings', null, login2.data ? login2.data.token : null);
   const found = (bookings2.data.items || []).find((x) => x.name === marker);
 
@@ -119,7 +152,9 @@ async function j(method, url, body, token) {
   console.log(`${login2.status === 200 ? '✅' : '❌'} admin login survived restart (${login2.status})`);
 
   const ok = priceOk && Boolean(found) && login2.status === 200;
-  console.log('\nRESULT: ' + (ok ? `✅ ${mode} persistence VERIFIED` : `❌ ${mode} persistence FAILED`));
+  console.log(`${login2.status === 200 ? '✅' : '❌'} admin login survived restart (${login2.status})`);
+  console.log(`\nRESULT: ${ok ? '✅' : '❌'} ${mode} persistence ${ok ? 'VERIFIED' : 'FAILED'}`);
+  console.log(JSON.stringify({ mode, dbPersistent: mode === 'PostgreSQL', ok }));
   process.exit(ok ? 0 : 1);
 })().catch((err) => {
   console.error('\n[error]', err.message);
