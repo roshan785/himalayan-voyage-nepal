@@ -52,8 +52,27 @@
     mountain: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 20l6-11 4 6 3-4 5 9z"/></svg>',
     phone: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2 4.2 2 2 0 0 1 4 2h3a2 2 0 0 1 2 1.7c.1 1 .4 1.9.7 2.8a2 2 0 0 1-.5 2.1L8.1 9.9a16 16 0 0 0 6 6l1.3-1.1a2 2 0 0 1 2.1-.5c.9.3 1.8.6 2.8.7a2 2 0 0 1 1.7 2z"/></svg>',
     mail: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-10 6L2 7"/></svg>',
-    pin: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0z"/><circle cx="12" cy="10" r="3"/></svg>'
+    pin: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0z"/><circle cx="12" cy="10" r="3"/></svg>',
+    facebook: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M22 12a10 10 0 1 0-11.6 9.9v-7H7.9V12h2.5V9.8c0-2.5 1.5-3.9 3.8-3.9 1.1 0 2.2.2 2.2.2v2.4h-1.2c-1.2 0-1.6.8-1.6 1.6V12h2.7l-.4 2.9h-2.3v7A10 10 0 0 0 22 12z"/></svg>',
+    instagram: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="5"/><circle cx="12" cy="12" r="4"/><circle cx="17.5" cy="6.5" r="1" fill="currentColor" stroke="none"/></svg>',
+    youtube: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M23 12s0-3.3-.4-4.9a2.5 2.5 0 0 0-1.7-1.8C19.2 5 12 5 12 5s-7.2 0-8.9.3A2.5 2.5 0 0 0 1.4 7.1C1 8.7 1 12 1 12s0 3.3.4 4.9a2.5 2.5 0 0 0 1.7 1.8C4.8 19 12 19 12 19s7.2 0 8.9-.3a2.5 2.5 0 0 0 1.7-1.8C23 15.3 23 12 23 12zM10 15.5v-7l6 3.5z"/></svg>',
+    x: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M18.9 2H22l-7.6 8.7L23 22h-6.8l-5.3-7-6.1 7H1.7l8.2-9.3L1 2h7l4.8 6.3zM17.8 20h1.7L7.3 3.9H5.5z"/></svg>',
+    tiktok: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M16.5 3c.3 2.2 1.6 3.6 3.7 3.9v2.5c-1.4.1-2.7-.3-3.9-1v6.3c0 3.4-2.6 5.9-5.9 5.4-2.6-.4-4.4-2.6-4.2-5.2.2-2.7 2.5-4.7 5.2-4.5.3 0 .6 0 .9.1v2.6c-.3-.1-.6-.2-.9-.2-1.4-.1-2.5 1-2.4 2.3.1 1.2 1.1 2.1 2.3 2.1 1.3 0 2.3-1 2.3-2.4V3z"/></svg>'
   };
+
+  // Social profiles — rendered as an icon row (footer) so the networks show as
+  // logos, matching the reference layout.
+  const SOCIAL = [
+    { key: 'facebook', href: 'https://facebook.com/himalayanvoyage', label: 'Facebook' },
+    { key: 'instagram', href: 'https://instagram.com/himalayanvoyage', label: 'Instagram' },
+    { key: 'youtube', href: 'https://youtube.com/@himalayanvoyage', label: 'YouTube' },
+    { key: 'x', href: 'https://x.com/himalayanvoyage', label: 'X (Twitter)' },
+    { key: 'tiktok', href: 'https://tiktok.com/@himalayanvoyage', label: 'TikTok' }
+  ];
+
+  const socialRow = () => SOCIAL.map((s) =>
+    `<a class="social-icon" href="${s.href}" target="_blank" rel="noopener noreferrer" aria-label="${s.label}" title="${s.label}">${ICON[s.key]}</a>`
+  ).join('');
 
   function header() {
     const links = NAV.map((n) => {
@@ -73,11 +92,7 @@
           <a href="mailto:${EMAIL}">${EMAIL}</a>
         </div>
         <div class="topbar__social">
-          <a href="https://facebook.com/himalayanvoyage" aria-label="Facebook">Facebook</a>
-          <a href="https://instagram.com/himalayanvoyage" aria-label="Instagram">Instagram</a>
-          <a href="https://youtube.com/@himalayanvoyage" aria-label="YouTube">YouTube</a>
-          <a href="https://x.com/himalayanvoyage" aria-label="X">X</a>
-          <a href="https://tiktok.com/@himalayanvoyage" aria-label="TikTok">TikTok</a>
+          ${socialRow()}
         </div>
       </div>
     </div>
@@ -141,14 +156,8 @@
             </ul>
           </div>
           <div>
-            <h4>Social Media</h4>
-            <ul class="footer-links">
-              <li><a href="https://facebook.com/himalayanvoyage">Facebook</a></li>
-              <li><a href="https://instagram.com/himalayanvoyage">Instagram</a></li>
-              <li><a href="https://youtube.com/@himalayanvoyage">YouTube</a></li>
-              <li><a href="https://x.com/himalayanvoyage">X (Twitter)</a></li>
-              <li><a href="https://tiktok.com/@himalayanvoyage">TikTok</a></li>
-            </ul>
+            <h4>Social Media Links</h4>
+            <div class="social-links">${socialRow()}</div>
             <h4 style="margin-top:16px">Newsletter</h4>
             <form id="newsletter-form" class="form" style="gap:8px">
               <input type="email" required placeholder="you@example.com" aria-label="Email address"
@@ -156,6 +165,14 @@
               <button class="btn btn--accent btn--sm" type="submit">Subscribe</button>
             </form>
           </div>
+        </div>
+        <div class="logo-row" aria-label="Affiliations">
+          <span class="logo-row__label">Affiliated With:</span>
+          <a class="logo-badge" href="https://www.iata.org/" target="_blank" rel="noopener noreferrer" title="IATA">IATA</a>
+          <a class="logo-badge" href="https://ntb.gov.np/" target="_blank" rel="noopener noreferrer" title="Nepal Tourism Board">NTB</a>
+          <a class="logo-badge" href="https://natta.org.np/" target="_blank" rel="noopener noreferrer" title="NATTA">NATTA</a>
+          <a class="logo-badge" href="https://nepal.gov.np/" target="_blank" rel="noopener noreferrer" title="Government of Nepal">Govt. of Nepal</a>
+          <a class="logo-badge" href="https://www.iso.org/home.html" target="_blank" rel="noopener noreferrer" title="ISO">ISO</a>
         </div>
         <div class="footer-bottom">
           <span>&copy; <span data-year>2026</span> Himalayan Voyage Nepal. All rights reserved.</span>
