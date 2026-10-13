@@ -1,8 +1,9 @@
 # Himalayan Voyage Nepal — production image
 #
-# Node 22 is required: the app uses the built-in `node:sqlite` module, which
-# only exists from Node 22 onwards. `node:22-slim` keeps the image small while
-# still providing glibc for pdfkit's bundled fonts.
+# Node 22 is required: the app still uses the built-in `node:sqlite` module for
+# the local/fallback driver. In production it runs against PostgreSQL when
+# DATABASE_URL is set. `node:22-slim` keeps the image small while still
+# providing glibc for pdfkit's bundled fonts.
 FROM node:22-slim
 
 ENV NODE_ENV=production
@@ -15,8 +16,10 @@ RUN npm ci --omit=dev
 # Application source (data/, .env and node_modules are excluded by .dockerignore).
 COPY . .
 
-# The database lives on a mounted volume so it survives redeploys.
-ENV DB_PATH=/data/travel.db
+# DATABASE_URL (set on the host) switches the app to PostgreSQL, which survives
+# redeploys and spin-downs. DB_PATH stays as the SQLite fallback for local runs
+# and for hosts without a database. /data is created so that fallback always has
+# a writable directory.
 ENV PORT=3400
 RUN mkdir -p /data
 VOLUME ["/data"]

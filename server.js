@@ -128,16 +128,28 @@ app.use((err, _req, res, _next) => {
   res.status(err.status || 500).json({ error: 'Internal server error' });
 });
 
-function start() {
-  ensureAdmin();
+async function start() {
+  // Prepare storage BEFORE accepting traffic: create the schema (idempotent on
+  // both SQLite and PostgreSQL), then seed the built-in content, then create the
+  // admin account. All three are async now that the DB layer supports Postgres.
+  const { init, seedIfEmpty } = require('./src/db');
+  const kind = await init();
+  await seedIfEmpty();
+  await ensureAdmin();
   const server = app.listen(PORT, HOST, () => {
-    console.log(`Himalayan Voyage Nepal listening on http://${HOST}:${PORT}`);
+    // Log the ACTUAL bound port: with PORT=0 the OS picks a free one, and the
+    // tests (and any ephemeral-port deployment) need to read it back.
+    const actual = server.address().port;
+    console.log(`Himalayan Voyage Nepal listening on http://${HOST}:${actual} (db: ${kind})`);
   });
   return server;
 }
 
 if (require.main === module) {
-  start();
+  start().catch((err) => {
+    console.error('[fatal] failed to start:', err.message);
+    process.exit(1);
+  });
 }
 
 module.exports = { app, start };

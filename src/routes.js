@@ -55,15 +55,15 @@ function str(value, max = 5000) {
 }
 
 /** Generate a slug that is unique within a table (ignoring the edited row). */
-function uniqueSlug(table, base, ignoreId = null) {
+async function uniqueSlug(table, base, ignoreId = null) {
   let slug = slugify(base);
   if (!slug) slug = 'item';
   let candidate = slug;
   let i = 2;
   for (;;) {
     const row = ignoreId
-      ? get(`SELECT id FROM ${table} WHERE slug = ? AND id != ?`, [candidate, ignoreId])
-      : get(`SELECT id FROM ${table} WHERE slug = ?`, [candidate]);
+      ? await get(`SELECT id FROM ${table} WHERE slug = ? AND id != ?`, [candidate, ignoreId])
+      : await get(`SELECT id FROM ${table} WHERE slug = ?`, [candidate]);
     if (!row) return candidate;
     candidate = `${slug}-${i++}`;
     if (i > 5000) return `${slug}-${Date.now()}`;
@@ -164,12 +164,12 @@ function normaliseTestimonial(body) {
 function crudRouter({ table, normalise, hasSlug = true, orderBy = 'id DESC' }) {
   const router = express.Router();
 
-  router.get('/', (_req, res) => {
-    const rows = all(`SELECT * FROM ${table} ORDER BY ${orderBy}`);
+  router.get('/', async (_req, res) => {
+    const rows = await all(`SELECT * FROM ${table} ORDER BY ${orderBy}`);
     res.json({ items: table === 'packages' ? rows.map(packageOut) : rows });
   });
 
-  router.post('/', (req, res) => {
+  router.post('/', async (req, res) => {
     const data = normalise(req.body || {});
     const label = data.title || data.name;
     if (!label) return bad(res, 'A title or name is required');
@@ -177,20 +177,20 @@ function crudRouter({ table, normalise, hasSlug = true, orderBy = 'id DESC' }) {
     const values = cols.map((c) => data[c]);
     if (hasSlug) {
       cols.push('slug');
-      values.push(uniqueSlug(table, label));
+      values.push(await uniqueSlug(table, label));
     }
     const placeholders = cols.map(() => '?').join(', ');
-    const info = run(`INSERT INTO ${table} (${cols.join(', ')}) VALUES (${placeholders})`, values);
-    const row = get(`SELECT * FROM ${table} WHERE id = ?`, [info.lastInsertRowid]);
+    const info = await run(`INSERT INTO ${table} (${cols.join(', ')}) VALUES (${placeholders})`, values);
+    const row = await get(`SELECT * FROM ${table} WHERE id = ?`, [info.lastInsertRowid]);
     const item = table === 'packages' ? packageOut(row) : row;
     // `id` is repeated at the top level so generic API clients can read the new
     // identifier without knowing the `{ item }` envelope.
     res.status(201).json({ item, id: item.id });
   });
 
-  router.put('/:id', (req, res) => {
+  router.put('/:id', async (req, res) => {
     const id = num(req.params.id, 0);
-    const existing = get(`SELECT * FROM ${table} WHERE id = ?`, [id]);
+    const existing = await get(`SELECT * FROM ${table} WHERE id = ?`, [id]);
     if (!existing) return res.status(404).json({ error: 'Not found' });
     const data = normalise(req.body || {});
     const label = data.title || data.name;
@@ -199,18 +199,18 @@ function crudRouter({ table, normalise, hasSlug = true, orderBy = 'id DESC' }) {
     const values = cols.map((c) => data[c]);
     if (hasSlug) {
       cols.push('slug');
-      values.push(uniqueSlug(table, label, id));
+      values.push(await uniqueSlug(table, label, id));
     }
     values.push(id);
-    run(`UPDATE ${table} SET ${cols.map((c) => `${c} = ?`).join(', ')} WHERE id = ?`, values);
-    const row = get(`SELECT * FROM ${table} WHERE id = ?`, [id]);
+    await run(`UPDATE ${table} SET ${cols.map((c) => `${c} = ?`).join(', ')} WHERE id = ?`, values);
+    const row = await get(`SELECT * FROM ${table} WHERE id = ?`, [id]);
     const item = table === 'packages' ? packageOut(row) : row;
     res.json({ item, id: item.id });
   });
 
-  router.delete('/:id', (req, res) => {
+  router.delete('/:id', async (req, res) => {
     const id = num(req.params.id, 0);
-    const info = run(`DELETE FROM ${table} WHERE id = ?`, [id]);
+    const info = await run(`DELETE FROM ${table} WHERE id = ?`, [id]);
     if (!info.changes) return res.status(404).json({ error: 'Not found' });
     res.json({ ok: true, deleted: id });
   });
@@ -230,36 +230,36 @@ function isEmail(value) {
 function publicRouter() {
   const router = express.Router();
 
-  router.get('/health', (_req, res) => {
+  router.get('/health', async (_req, res) => {
     res.json({ ok: true, service: 'himalayan-voyage', uptime: process.uptime() });
   });
 
-  router.get('/site', (_req, res) => res.json(SITE));
+  router.get('/site', async (_req, res) => res.json(SITE));
 
-  router.get('/stats', (_req, res) => {
+  router.get('/stats', async (_req, res) => {
     res.json({
-      packages: get('SELECT COUNT(*) AS n FROM packages').n,
-      destinations: get('SELECT COUNT(*) AS n FROM destinations').n,
-      testimonials: get('SELECT COUNT(*) AS n FROM testimonials').n,
-      posts: get('SELECT COUNT(*) AS n FROM blog_posts WHERE published = 1').n
+      packages: (await get('SELECT COUNT(*) AS n FROM packages')).n,
+      destinations: (await get('SELECT COUNT(*) AS n FROM destinations')).n,
+      testimonials: (await get('SELECT COUNT(*) AS n FROM testimonials')).n,
+      posts: (await get('SELECT COUNT(*) AS n FROM blog_posts WHERE published = 1')).n
     });
   });
 
-  router.get('/destinations', (req, res) => {
+  router.get('/destinations', async (req, res) => {
     const { kind } = req.query;
     const rows = kind
-      ? all('SELECT * FROM destinations WHERE kind = ? ORDER BY featured DESC, name ASC', [str(kind, 40)])
-      : all('SELECT * FROM destinations ORDER BY featured DESC, name ASC');
+      ? await all('SELECT * FROM destinations WHERE kind = ? ORDER BY featured DESC, name ASC', [str(kind, 40)])
+      : await all('SELECT * FROM destinations ORDER BY featured DESC, name ASC');
     res.json({ items: rows });
   });
 
-  router.get('/destinations/:slug', (req, res) => {
-    const row = get('SELECT * FROM destinations WHERE slug = ?', [str(req.params.slug, 120)]);
+  router.get('/destinations/:slug', async (req, res) => {
+    const row = await get('SELECT * FROM destinations WHERE slug = ?', [str(req.params.slug, 120)]);
     if (!row) return res.status(404).json({ error: 'Destination not found' });
     res.json({ item: row });
   });
 
-  router.get('/packages', (req, res) => {
+  router.get('/packages', async (req, res) => {
     const { category, featured, q } = req.query;
     const clauses = [];
     const params = [];
@@ -276,31 +276,31 @@ function publicRouter() {
       params.push(like, like, like);
     }
     const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';
-    const rows = all(`SELECT * FROM packages ${where} ORDER BY featured DESC, id DESC`, params);
+    const rows = await all(`SELECT * FROM packages ${where} ORDER BY featured DESC, id DESC`, params);
     res.json({ items: rows.map(packageOut) });
   });
 
-  router.get('/packages/:slug', (req, res) => {
-    const row = get('SELECT * FROM packages WHERE slug = ?', [str(req.params.slug, 160)]);
+  router.get('/packages/:slug', async (req, res) => {
+    const row = await get('SELECT * FROM packages WHERE slug = ?', [str(req.params.slug, 160)]);
     if (!row) return res.status(404).json({ error: 'Package not found' });
     res.json({ item: packageOut(row) });
   });
 
-  router.get('/testimonials', (_req, res) => {
-    res.json({ items: all('SELECT * FROM testimonials ORDER BY id DESC') });
+  router.get('/testimonials', async (_req, res) => {
+    res.json({ items: await all('SELECT * FROM testimonials ORDER BY id DESC') });
   });
 
-  router.get('/posts', (_req, res) => {
-    res.json({ items: all('SELECT id, title, slug, excerpt, author, cover, created_at FROM blog_posts WHERE published = 1 ORDER BY id DESC') });
+  router.get('/posts', async (_req, res) => {
+    res.json({ items: await all('SELECT id, title, slug, excerpt, author, cover, created_at FROM blog_posts WHERE published = 1 ORDER BY id DESC') });
   });
 
-  router.get('/posts/:slug', (req, res) => {
-    const row = get('SELECT * FROM blog_posts WHERE slug = ? AND published = 1', [str(req.params.slug, 200)]);
+  router.get('/posts/:slug', async (req, res) => {
+    const row = await get('SELECT * FROM blog_posts WHERE slug = ? AND published = 1', [str(req.params.slug, 200)]);
     if (!row) return res.status(404).json({ error: 'Post not found' });
     res.json({ item: row });
   });
 
-  router.post('/contact', (req, res) => {
+  router.post('/contact', async (req, res) => {
     const body = req.body || {};
     const name = str(body.name, 150);
     const email = str(body.email, 200);
@@ -308,14 +308,14 @@ function publicRouter() {
     if (!name) return bad(res, 'Your name is required');
     if (!isEmail(email)) return bad(res, 'A valid email address is required');
     if (message.length < 5) return bad(res, 'Please write a short message');
-    const info = run(
+    const info = await run(
       'INSERT INTO contacts (name, email, phone, subject, message) VALUES (?, ?, ?, ?, ?)',
       [name, email, str(body.phone, 40), str(body.subject, 200), message]
     );
     res.status(201).json({ ok: true, id: info.lastInsertRowid });
   });
 
-  router.post('/bookings', (req, res) => {
+  router.post('/bookings', async (req, res) => {
     const body = req.body || {};
     const name = str(body.name, 150);
     const email = str(body.email, 200);
@@ -323,8 +323,8 @@ function publicRouter() {
     if (!isEmail(email)) return bad(res, 'A valid email address is required');
     const travellers = Math.max(1, Math.min(50, Math.round(num(body.travellers, 1))));
     const slug = str(body.package_slug, 160);
-    const pkg = slug ? get('SELECT id, title, slug FROM packages WHERE slug = ?', [slug]) : null;
-    const info = run(
+    const pkg = slug ? await get('SELECT id, title, slug FROM packages WHERE slug = ?', [slug]) : null;
+    const info = await run(
       `INSERT INTO bookings
         (package_id, package_slug, package_title, name, email, phone, travellers, travel_date, message)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -334,23 +334,23 @@ function publicRouter() {
     res.status(201).json({ ok: true, id: info.lastInsertRowid });
   });
 
-  router.post('/newsletter', (req, res) => {
+  router.post('/newsletter', async (req, res) => {
     const email = str((req.body || {}).email, 200);
     if (!isEmail(email)) return bad(res, 'A valid email address is required');
     try {
-      run('INSERT INTO subscribers (email) VALUES (?)', [email.toLowerCase()]);
+      await run('INSERT INTO subscribers (email) VALUES (?)', [email.toLowerCase()]);
     } catch (_err) {
       return res.json({ ok: true, alreadySubscribed: true });
     }
     res.status(201).json({ ok: true });
   });
 
-  router.post('/auth/login', (req, res) => {
+  router.post('/auth/login', async (req, res) => {
     const body = req.body || {};
     const email = str(body.email, 200).toLowerCase();
     const password = String(body.password || '');
     if (!email || !password) return bad(res, 'Email and password are required');
-    const user = findUserByEmail(email);
+    const user = await findUserByEmail(email);
     if (!user || !verifyPassword(password, user.password_hash)) {
       return res.status(401).json({ error: 'Invalid email or password' });
     }
@@ -361,13 +361,13 @@ function publicRouter() {
     res.json({ ok: true, token, user: { id: user.id, email: user.email, name: user.name, role: user.role } });
   });
 
-  router.post('/auth/logout', (_req, res) => {
+  router.post('/auth/logout', async (_req, res) => {
     res.setHeader('Set-Cookie', `${TOKEN_COOKIE}=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0`);
     res.json({ ok: true });
   });
 
-  router.get('/auth/me', requireAuth(true), (req, res) => {
-    const user = get('SELECT id, email, name, role FROM users WHERE id = ?', [req.user.id]);
+  router.get('/auth/me', requireAuth(true), async (req, res) => {
+    const user = await get('SELECT id, email, name, role FROM users WHERE id = ?', [req.user.id]);
     if (!user) return res.status(401).json({ error: 'Account no longer exists' });
     res.json({ user });
   });
@@ -383,20 +383,20 @@ function adminRouter() {
   const router = express.Router();
   router.use(requireAuth(true));
 
-  router.get('/overview', (_req, res) => {
+  router.get('/overview', async (_req, res) => {
     res.json({
       counts: {
-        packages: get('SELECT COUNT(*) AS n FROM packages').n,
-        destinations: get('SELECT COUNT(*) AS n FROM destinations').n,
-        posts: get('SELECT COUNT(*) AS n FROM blog_posts').n,
-        testimonials: get('SELECT COUNT(*) AS n FROM testimonials').n,
-        contacts: get('SELECT COUNT(*) AS n FROM contacts').n,
-        unreadContacts: get('SELECT COUNT(*) AS n FROM contacts WHERE handled = 0').n,
-        subscribers: get('SELECT COUNT(*) AS n FROM subscribers').n,
-        bookings: get('SELECT COUNT(*) AS n FROM bookings').n,
-        newBookings: get("SELECT COUNT(*) AS n FROM bookings WHERE status = 'new'").n
+        packages: (await get('SELECT COUNT(*) AS n FROM packages')).n,
+        destinations: (await get('SELECT COUNT(*) AS n FROM destinations')).n,
+        posts: (await get('SELECT COUNT(*) AS n FROM blog_posts')).n,
+        testimonials: (await get('SELECT COUNT(*) AS n FROM testimonials')).n,
+        contacts: (await get('SELECT COUNT(*) AS n FROM contacts')).n,
+        unreadContacts: (await get('SELECT COUNT(*) AS n FROM contacts WHERE handled = 0')).n,
+        subscribers: (await get('SELECT COUNT(*) AS n FROM subscribers')).n,
+        bookings: (await get('SELECT COUNT(*) AS n FROM bookings')).n,
+        newBookings: await get("SELECT COUNT(*) AS n FROM bookings WHERE status = 'new'").n
       },
-      recentContacts: all('SELECT id, name, email, subject, handled, created_at FROM contacts ORDER BY id DESC LIMIT 5')
+      recentContacts: await all('SELECT id, name, email, subject, handled, created_at FROM contacts ORDER BY id DESC LIMIT 5')
     });
   });
 
@@ -408,28 +408,28 @@ function adminRouter() {
   router.use('/bookings', crudRouter({ table: 'bookings', normalise: normaliseBooking, hasSlug: false }));
 
   // Contacts are read-only from the admin API except for the handled flag.
-  router.get('/contacts', (_req, res) => {
-    res.json({ items: all('SELECT * FROM contacts ORDER BY id DESC') });
+  router.get('/contacts', async (_req, res) => {
+    res.json({ items: await all('SELECT * FROM contacts ORDER BY id DESC') });
   });
 
-  router.patch('/contacts/:id', (req, res) => {
+  router.patch('/contacts/:id', async (req, res) => {
     const id = num(req.params.id, 0);
-    const existing = get('SELECT * FROM contacts WHERE id = ?', [id]);
+    const existing = await get('SELECT * FROM contacts WHERE id = ?', [id]);
     if (!existing) return res.status(404).json({ error: 'Not found' });
     const handled = (req.body || {}).handled ? 1 : 0;
-    run('UPDATE contacts SET handled = ? WHERE id = ?', [handled, id]);
-    res.json({ item: get('SELECT * FROM contacts WHERE id = ?', [id]), id });
+    await run('UPDATE contacts SET handled = ? WHERE id = ?', [handled, id]);
+    res.json({ item: await get('SELECT * FROM contacts WHERE id = ?', [id]), id });
   });
 
-  router.delete('/contacts/:id', (req, res) => {
+  router.delete('/contacts/:id', async (req, res) => {
     const id = num(req.params.id, 0);
-    const info = run('DELETE FROM contacts WHERE id = ?', [id]);
+    const info = await run('DELETE FROM contacts WHERE id = ?', [id]);
     if (!info.changes) return res.status(404).json({ error: 'Not found' });
     res.json({ ok: true, deleted: id });
   });
 
-  router.get('/subscribers', (_req, res) => {
-    res.json({ items: all('SELECT id, email, created_at FROM subscribers ORDER BY id DESC') });
+  router.get('/subscribers', async (_req, res) => {
+    res.json({ items: await all('SELECT id, email, created_at FROM subscribers ORDER BY id DESC') });
   });
 
   return router;

@@ -1,16 +1,20 @@
 'use strict';
 
 /**
- * Destination detail columns.
+ * Destination detail columns — driver-agnostic migration.
  *
  * The reference site shows an "Overview" box on each destination detail page
  * (Country / Capital / Currency / Language / Best Time to Visit / Visa
  * Requirements). Those fields are added here so the destination page can render
  * that box.
  *
- * This module is intentionally tiny and idempotent: it inspects the existing
- * table with PRAGMA table_info and only ALTERs the columns that are missing, so
+ * The module is intentionally tiny and idempotent: it asks the DRIVER for the
+ * table's current column names and only ALTERs the columns that are missing, so
  * it is safe to run on every boot and on an already-populated database.
+ *
+ * It works with both drivers (`node:sqlite` locally, `pg` in production) because
+ * it only uses the `columns()` / `run()` methods they both expose — there is no
+ * PRAGMA or information_schema here.
  */
 
 const DESTINATION_COLUMNS = [
@@ -24,19 +28,19 @@ const DESTINATION_COLUMNS = [
 
 /**
  * Add any missing columns to `destinations`.
- * @param {import('node:sqlite').DatabaseSync} db
- * @returns {string[]} names of the columns that were actually created
+ * @param {{columns: (t:string)=>Promise<string[]>, run: Function}} driver
+ * @returns {Promise<string[]>} names of the columns that were actually created
  */
-function ensureDestinationColumns(db) {
-  const existing = new Set(
-    db.prepare('PRAGMA table_info(destinations)').all().map((c) => c.name)
-  );
+async function ensureDestinationColumns(driver) {
+  const existing = new Set(await driver.columns('destinations'));
   const added = [];
   for (const [name, def] of DESTINATION_COLUMNS) {
     if (!existing.has(name)) {
-      // Column name + type are fixed literals here (never user input), so the
-      // interpolation below cannot be an injection vector.
-      db.exec(`ALTER TABLE destinations ADD COLUMN ${name} ${def}`);
+      // `name` and `def` are fixed literals in this file (never user input), so
+      // the interpolation below cannot be an injection vector. The column name
+      // is additionally whitelisted against the same literal list.
+      if (!/^[a-z_]+$/.test(name)) throw new Error('unsafe column name: ' + name);
+      await driver.run(`ALTER TABLE destinations ADD COLUMN ${name} ${def}`);
       added.push(name);
     }
   }

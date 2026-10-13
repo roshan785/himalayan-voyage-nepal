@@ -13,13 +13,18 @@
     "pages": "node scripts/generate-visa-pages.js",
     "build:assets": "node scripts/fetch-images.js && node scripts/generate-docs.js && node scripts/generate-visa-pages.js && node scripts/bust-cache.js",
     "version": "node scripts/bust-cache.js",
-    "admin:pass": "node scripts/admin-password.js"
+    "admin:pass": "node scripts/admin-password.js",
+    "migrate:pg": "node scripts/sqlite-to-pg.js",
+    "migrate:verify": "node scripts/sqlite-to-pg.js --verify-only",
+    "test:persist": "node scripts/persistence-test.js",
+    "db:migrate": "node -e \"require('./src/db').init().then(k=>console.log('schema ready on',k))\""
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",
     "express": "^4.22.3",
     "jsonwebtoken": "^9.0.3",
-    "pdfkit": "^0.20.2"
+    "pdfkit": "^0.20.2",
+    "pg": "^8.23.1"
   },
   "engines": {
     "node": ">=20.0.0"

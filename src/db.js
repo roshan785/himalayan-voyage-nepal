@@ -1,27 +1,37 @@
 'use strict';
 
 /**
- * SQLite access layer.
+ * Database access layer — DUAL DRIVER.
  *
- * Uses Node's built-in `node:sqlite` (stable in Node 22+) so the project has an
- * embedded, dependency-free database. The schema is created idempotently on load
- * and a small set of seed rows is inserted only when a table is empty, which
- * keeps `npm start` self-bootstrapping on a fresh checkout.
+ *   No DATABASE_URL  -> SQLite via Node's built-in `node:sqlite` (zero-config,
+ *                       used for local development and as the offline fallback).
+ *   DATABASE_URL set -> PostgreSQL via `pg` (used in production so data
+ *                       survives redeploys/spin-downs on a free host).
+ *
+ * Both drivers expose the SAME helpers (`all`, `get`, `run`) so the rest of the
+ * app is storage-agnostic. The helpers are `async` in both modes — that keeps a
+ * single code path for callers (always `await`) and lets the driver be swapped
+ * by changing one environment variable, which is also the rollback switch.
+ *
+ * SQL is written once with `?` placeholders (the existing house style); the
+ * Postgres adapter rewrites them to `$1..$n` internally, so no query string in
+ * the routes has to change.
  */
 
 const fs = require('fs');
 const path = require('path');
-const { DatabaseSync } = require('node:sqlite');
-const { ensureDestinationColumns } = require('./db-migrate');
+
+const DATABASE_URL = process.env.DATABASE_URL || '';
+const IS_PG = /^postgres(ql)?:\/\//i.test(DATABASE_URL);
 
 const DB_PATH = process.env.DB_PATH || path.join(__dirname, '..', 'data', 'travel.db');
-fs.mkdirSync(path.dirname(DB_PATH), { recursive: true });
 
-const db = new DatabaseSync(DB_PATH);
-db.exec('PRAGMA journal_mode = WAL;');
-db.exec('PRAGMA foreign_keys = ON;');
+// ---------------------------------------------------------------------------
+// Schema
+// ---------------------------------------------------------------------------
 
-const SCHEMA = `
+/** SQLite schema (kept for the zero-config local/fallback mode). */
+const SCHEMA_SQLITE = `
 CREATE TABLE IF NOT EXISTS users (
   id            INTEGER PRIMARY KEY AUTOINCREMENT,
   email         TEXT UNIQUE NOT NULL,
@@ -35,10 +45,16 @@ CREATE TABLE IF NOT EXISTS destinations (
   id          INTEGER PRIMARY KEY AUTOINCREMENT,
   name        TEXT NOT NULL,
   slug        TEXT UNIQUE NOT NULL,
-  kind        TEXT NOT NULL DEFAULT 'nepal',      -- 'nepal' | 'international'
+  kind        TEXT NOT NULL DEFAULT 'nepal',
   region      TEXT NOT NULL DEFAULT '',
   image       TEXT NOT NULL DEFAULT '',
   description TEXT NOT NULL DEFAULT '',
+  country     TEXT NOT NULL DEFAULT '',
+  capital     TEXT NOT NULL DEFAULT '',
+  currency    TEXT NOT NULL DEFAULT '',
+  language    TEXT NOT NULL DEFAULT '',
+  best_time   TEXT NOT NULL DEFAULT '',
+  visa        TEXT NOT NULL DEFAULT '',
   featured    INTEGER NOT NULL DEFAULT 0,
   created_at  TEXT NOT NULL DEFAULT (datetime('now'))
 );
@@ -47,7 +63,7 @@ CREATE TABLE IF NOT EXISTS packages (
   id          INTEGER PRIMARY KEY AUTOINCREMENT,
   title       TEXT NOT NULL,
   slug        TEXT UNIQUE NOT NULL,
-  category    TEXT NOT NULL DEFAULT 'domestic',   -- domestic|international|historical|religious|trekking
+  category    TEXT NOT NULL DEFAULT 'domestic',
   destination TEXT NOT NULL DEFAULT '',
   days        INTEGER NOT NULL DEFAULT 1,
   nights      INTEGER NOT NULL DEFAULT 0,
@@ -55,7 +71,7 @@ CREATE TABLE IF NOT EXISTS packages (
   discount    REAL NOT NULL DEFAULT 0,
   image       TEXT NOT NULL DEFAULT '',
   summary     TEXT NOT NULL DEFAULT '',
-  highlights  TEXT NOT NULL DEFAULT '[]',         -- JSON array of strings
+  highlights  TEXT NOT NULL DEFAULT '[]',
   featured    INTEGER NOT NULL DEFAULT 0,
   created_at  TEXT NOT NULL DEFAULT (datetime('now'))
 );
@@ -92,6 +108,12 @@ CREATE TABLE IF NOT EXISTS contacts (
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+CREATE TABLE IF NOT EXISTS subscribers (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  email      TEXT UNIQUE NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 CREATE TABLE IF NOT EXISTS bookings (
   id            INTEGER PRIMARY KEY AUTOINCREMENT,
   package_id    INTEGER,
@@ -103,14 +125,8 @@ CREATE TABLE IF NOT EXISTS bookings (
   travellers    INTEGER NOT NULL DEFAULT 1,
   travel_date   TEXT NOT NULL DEFAULT '',
   message       TEXT NOT NULL DEFAULT '',
-  status        TEXT NOT NULL DEFAULT 'new',   -- new | confirmed | cancelled | done
+  status        TEXT NOT NULL DEFAULT 'new',
   created_at    TEXT NOT NULL DEFAULT (datetime('now'))
-);
-
-CREATE TABLE IF NOT EXISTS subscribers (
-  id         INTEGER PRIMARY KEY AUTOINCREMENT,
-  email      TEXT UNIQUE NOT NULL,
-  created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 CREATE INDEX IF NOT EXISTS idx_packages_category ON packages(category);
@@ -119,11 +135,263 @@ CREATE INDEX IF NOT EXISTS idx_contacts_created ON contacts(created_at);
 CREATE INDEX IF NOT EXISTS idx_bookings_status ON bookings(status);
 `;
 
-db.exec(SCHEMA);
+/**
+ * PostgreSQL schema. Mirrors the SQLite one so behaviour (including JSON field
+ * shapes) is identical: booleans stay INTEGER 0/1 and timestamps stay TEXT so
+ * the frontend never has to special-case a driver.
+ */
+const SCHEMA_PG = `
+CREATE TABLE IF NOT EXISTS users (
+  id            SERIAL PRIMARY KEY,
+  email         TEXT UNIQUE NOT NULL,
+  password_hash TEXT NOT NULL,
+  name          TEXT NOT NULL DEFAULT 'Admin',
+  role          TEXT NOT NULL DEFAULT 'admin',
+  created_at    TEXT NOT NULL DEFAULT to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS')
+);
 
-// Add destination-detail columns (country/capital/currency/language/best_time/
-// visa) on databases created before those fields existed. Idempotent.
-ensureDestinationColumns(db);
+CREATE TABLE IF NOT EXISTS destinations (
+  id          SERIAL PRIMARY KEY,
+  name        TEXT NOT NULL,
+  slug        TEXT UNIQUE NOT NULL,
+  kind        TEXT NOT NULL DEFAULT 'nepal',
+  region      TEXT NOT NULL DEFAULT '',
+  image       TEXT NOT NULL DEFAULT '',
+  description TEXT NOT NULL DEFAULT '',
+  country     TEXT NOT NULL DEFAULT '',
+  capital     TEXT NOT NULL DEFAULT '',
+  currency    TEXT NOT NULL DEFAULT '',
+  language    TEXT NOT NULL DEFAULT '',
+  best_time   TEXT NOT NULL DEFAULT '',
+  visa        TEXT NOT NULL DEFAULT '',
+  featured    INTEGER NOT NULL DEFAULT 0,
+  created_at  TEXT NOT NULL DEFAULT to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS')
+);
+
+CREATE TABLE IF NOT EXISTS packages (
+  id          SERIAL PRIMARY KEY,
+  title       TEXT NOT NULL,
+  slug        TEXT UNIQUE NOT NULL,
+  category    TEXT NOT NULL DEFAULT 'domestic',
+  destination TEXT NOT NULL DEFAULT '',
+  days        INTEGER NOT NULL DEFAULT 1,
+  nights      INTEGER NOT NULL DEFAULT 0,
+  price       DOUBLE PRECISION NOT NULL DEFAULT 0,
+  discount    DOUBLE PRECISION NOT NULL DEFAULT 0,
+  image       TEXT NOT NULL DEFAULT '',
+  summary     TEXT NOT NULL DEFAULT '',
+  highlights  TEXT NOT NULL DEFAULT '[]',
+  featured    INTEGER NOT NULL DEFAULT 0,
+  created_at  TEXT NOT NULL DEFAULT to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS')
+);
+
+CREATE TABLE IF NOT EXISTS testimonials (
+  id         SERIAL PRIMARY KEY,
+  name       TEXT NOT NULL,
+  location   TEXT NOT NULL DEFAULT '',
+  rating     INTEGER NOT NULL DEFAULT 5,
+  content    TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL DEFAULT to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS')
+);
+
+CREATE TABLE IF NOT EXISTS blog_posts (
+  id         SERIAL PRIMARY KEY,
+  title      TEXT NOT NULL,
+  slug       TEXT UNIQUE NOT NULL,
+  excerpt    TEXT NOT NULL DEFAULT '',
+  body       TEXT NOT NULL DEFAULT '',
+  author     TEXT NOT NULL DEFAULT 'Editorial Team',
+  cover      TEXT NOT NULL DEFAULT '',
+  published  INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT NOT NULL DEFAULT to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS')
+);
+
+CREATE TABLE IF NOT EXISTS contacts (
+  id         SERIAL PRIMARY KEY,
+  name       TEXT NOT NULL,
+  email      TEXT NOT NULL,
+  phone      TEXT NOT NULL DEFAULT '',
+  subject    TEXT NOT NULL DEFAULT '',
+  message    TEXT NOT NULL DEFAULT '',
+  handled    INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL DEFAULT to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS')
+);
+
+CREATE TABLE IF NOT EXISTS subscribers (
+  id         SERIAL PRIMARY KEY,
+  email      TEXT UNIQUE NOT NULL,
+  created_at TEXT NOT NULL DEFAULT to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS')
+);
+
+CREATE TABLE IF NOT EXISTS bookings (
+  id            SERIAL PRIMARY KEY,
+  package_id    INTEGER,
+  package_slug  TEXT NOT NULL DEFAULT '',
+  package_title TEXT NOT NULL DEFAULT '',
+  name          TEXT NOT NULL,
+  email         TEXT NOT NULL,
+  phone         TEXT NOT NULL DEFAULT '',
+  travellers    INTEGER NOT NULL DEFAULT 1,
+  travel_date   TEXT NOT NULL DEFAULT '',
+  message       TEXT NOT NULL DEFAULT '',
+  status        TEXT NOT NULL DEFAULT 'new',
+  created_at    TEXT NOT NULL DEFAULT to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS')
+);
+
+CREATE INDEX IF NOT EXISTS idx_packages_category ON packages(category);
+CREATE INDEX IF NOT EXISTS idx_destinations_kind ON destinations(kind);
+CREATE INDEX IF NOT EXISTS idx_contacts_created ON contacts(created_at);
+CREATE INDEX IF NOT EXISTS idx_bookings_status ON bookings(status);
+`;
+
+/** The tables the app owns, in dependency-free order (no FKs are declared). */
+const TABLES = ['users', 'destinations', 'packages', 'testimonials',
+  'blog_posts', 'contacts', 'subscribers', 'bookings'];
+
+// ---------------------------------------------------------------------------
+// Driver: SQLite (node:sqlite)
+// ---------------------------------------------------------------------------
+
+function createSqliteDriver() {
+  const { DatabaseSync } = require('node:sqlite');
+  fs.mkdirSync(path.dirname(DB_PATH), { recursive: true });
+  const sqlite = new DatabaseSync(DB_PATH);
+  sqlite.exec('PRAGMA journal_mode = WAL;');
+  sqlite.exec('PRAGMA foreign_keys = ON;');
+  sqlite.exec(SCHEMA_SQLITE);
+
+  return {
+    kind: 'sqlite',
+    label: DB_PATH,
+    raw: sqlite,
+    async all(sql, params = []) { return sqlite.prepare(sql).all(...params); },
+    async get(sql, params = []) { return sqlite.prepare(sql).get(...params); },
+    async run(sql, params = []) {
+      const info = sqlite.prepare(sql).run(...params);
+      return { changes: Number(info.changes), lastInsertRowid: Number(info.lastInsertRowid) };
+    },
+    // Runs ONLY the schema constant defined in this module — never a parameter,
+    // so no caller can pass SQL through it.
+    async applySchema() { sqlite.exec(SCHEMA_SQLITE); },
+    async close() { try { sqlite.close(); } catch (_e) { /* best effort */ } },
+    /** Column names for a table (used by the idempotent migrator). */
+    async columns(table) {
+      return sqlite.prepare(`PRAGMA table_info(${table})`).all().map((c) => c.name);
+    },
+    /** Postgres uses setval; SQLite sequences are implicit in AUTOINCREMENT. */
+    async syncSequence() { /* no-op for SQLite */ },
+    async tableExists(table) {
+      const r = sqlite.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name=?").get(table);
+      return Boolean(r);
+    }
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Driver: PostgreSQL (pg)
+// ---------------------------------------------------------------------------
+
+/**
+ * Rewrite `?` placeholders to Postgres `$1..$n`.
+ * Only `?` characters are touched, and the existing code never puts a literal
+ * `?` inside a SQL string, so this is safe for every query in the project.
+ */
+function toPgPlaceholders(sql) {
+  let i = 0;
+  return sql.replace(/\?/g, () => `$${++i}`);
+}
+
+function createPgDriver() {
+  const pg = require('pg');
+  const { Pool } = pg;
+  // Postgres returns BIGINT (COUNT(*), etc.) as a STRING to avoid precision loss.
+  // The app treats counts as numbers (`Number.isInteger`, `=== 0`), so parse
+  // int8 back to a JS number — safe here because our row counts are tiny.
+  pg.types.setTypeParser(20, (v) => (v === null ? null : Number(v)));
+  // Managed free tiers (Neon/Supabase/Render) terminate TLS at their proxy and
+  // present a certificate the default trust store may not know; `ssl.rejectUnauthorized:false`
+  // is the documented setting for those providers. Localhost does not use SSL.
+  const host = (() => { try { return new URL(DATABASE_URL).hostname; } catch (_e) { return ''; } })();
+  const isLocal = host === 'localhost' || host === '127.0.0.1' || host === '::1';
+  const needsSsl = !isLocal && !/sslmode=disable/i.test(DATABASE_URL);
+  const pool = new Pool({
+    connectionString: DATABASE_URL,
+    max: Number(process.env.PG_POOL_MAX || 5),
+    idleTimeoutMillis: 30_000,
+    connectionTimeoutMillis: 15_000,
+    ssl: needsSsl ? { rejectUnauthorized: false } : false
+  });
+  // A failed idle client must never crash the process.
+  pool.on('error', (err) => console.error('[db] idle pg client error:', err.message));
+
+  return {
+    kind: 'postgres',
+    label: host + '/' + (() => { try { return new URL(DATABASE_URL).pathname.replace(/^\//, ''); } catch (_e) { return ''; } })(),
+    raw: pool,
+    async all(sql, params = []) { return (await pool.query(toPgPlaceholders(sql), params)).rows; },
+    async get(sql, params = []) { return (await pool.query(toPgPlaceholders(sql), params)).rows[0] || null; },
+    async run(sql, params = []) {
+      // SQLite reports lastInsertRowid natively; PostgreSQL does not, so for an
+      // INSERT we append `RETURNING id` and read it back. This keeps every call
+      // site identical across both drivers — no query in the app has to change.
+      const isInsert = /^\s*insert\s/i.test(sql);
+      let finalSql = toPgPlaceholders(sql);
+      if (isInsert && !/returning\b/i.test(sql)) finalSql += ' RETURNING id';
+      const res = await pool.query(finalSql, params);
+      const lastInsertRowid = isInsert && res.rows[0] ? Number(res.rows[0].id) : undefined;
+      return { changes: Number(res.rowCount), lastInsertRowid };
+    },
+    // Runs ONLY the schema constant defined in this module — never a parameter,
+    // so no caller can pass SQL through it.
+    async applySchema() { await pool.query(SCHEMA_PG); },
+    async close() { try { await pool.end(); } catch (_e) { /* best effort */ } },
+    async columns(table) {
+      const res = await pool.query(
+        'SELECT column_name FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = $1',
+        [table]
+      );
+      return res.rows.map((r) => r.column_name);
+    },
+    /** Reset SERIAL sequences so inserts after an explicit-id import do not clash. */
+    async syncSequence(table) {
+      try {
+        await pool.query(
+          `SELECT setval(pg_get_serial_sequence($1, 'id'), ` +
+          `COALESCE((SELECT MAX(id) FROM ${table}), 1), (SELECT COUNT(*) > 0 FROM ${table}))`,
+          [table]
+        );
+      } catch (err) {
+        console.warn(`[db] could not sync sequence for ${table}: ${err.message}`);
+      }
+    },
+    async tableExists(table) {
+      const res = await pool.query(
+        'SELECT 1 FROM information_schema.tables WHERE table_schema = current_schema() AND table_name = $1',
+        [table]
+      );
+      return res.rowCount > 0;
+    }
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Active driver
+// ---------------------------------------------------------------------------
+
+const driver = IS_PG ? createPgDriver() : createSqliteDriver();
+const db = driver.raw;
+
+async function all(sql, params = []) { return driver.all(sql, params); }
+async function get(sql, params = []) { return driver.get(sql, params); }
+async function run(sql, params = []) { return driver.run(sql, params); }
+
+/** Create the schema (idempotent) — explicit so a deploy can call it. */
+async function init() {
+  await driver.applySchema();
+  const { ensureDestinationColumns } = require('./db-migrate');
+  await ensureDestinationColumns(driver);
+  return driver.kind;
+}
 
 /** Turn a title into a URL-safe slug. */
 function slugify(text) {
@@ -135,30 +403,10 @@ function slugify(text) {
     .slice(0, 80) || 'item';
 }
 
-/** Read every row of a table ordered by a whitelisted column. */
-function all(sql, params = []) {
-  return db.prepare(sql).all(...params);
-}
-
-/** Read a single row. */
-function get(sql, params = []) {
-  return db.prepare(sql).get(...params);
-}
-
-/** Execute a write and return { changes, lastInsertRowid }. */
-function run(sql, params = []) {
-  return db.prepare(sql).run(...params);
-}
-
 // ---------------------------------------------------------------------------
 // Seed data (only inserted when the relevant table is empty)
 // ---------------------------------------------------------------------------
 
-/**
- * Destination overview details shown on the destination detail page
- * (reference parity: Country / Capital / Currency / Language / Best time / Visa).
- * Keyed by slug so it can both seed fresh databases and backfill old rows.
- */
 const DESTINATION_DETAILS = {
   'pokhara': { country: 'Nepal', capital: 'Kathmandu', currency: 'Nepali Rupees', language: 'Nepali', best_time: 'Spring, Autumn, and Winter', visa: 'No visa requirement' },
   'rara-lake': { country: 'Nepal', capital: 'Kathmandu', currency: 'Nepali Rupees', language: 'Nepali', best_time: 'Spring, Autumn, and Winter', visa: 'No visa requirement' },
@@ -196,7 +444,7 @@ const SEED_DESTINATIONS = [
   { name: 'Paris', kind: 'international', region: 'France', featured: 0, image: 'paris',
     description: 'Paris is France\'s elegant capital, built around the Seine and packed with world-famous art, architecture and cuisine. See the Eiffel Tower, the Louvre, Notre-Dame and Montmartre, then stroll the boulevards and riverside cafés. Day trips to Versailles and Giverny round off a city that has inspired travellers for centuries.' },
   { name: 'Barcelona', kind: 'international', region: 'Spain', featured: 0, image: 'barcelona',
-    description: 'Barcelona is Spain\u2019s vibrant Catalan capital, where Gaud\u00ed\u2019s architecture meets beaches, markets and a famously energetic old town. Tour the Sagrada Fam\u00edlia and Park G\u00fcell, wander the Gothic Quarter and Las Ramblas, and enjoy the tapas culture. With sunshine, art and sea air, Barcelona is one of Europe\u2019s most enjoyable city breaks.' },
+    description: 'Barcelona is Spain\u2019s vibrant Catalan capital, where Gaud\u00ed\u2019s architecture meets beaches, markets and a famously energetic old town. Tour the Sagrada Fam\u00edlia and Park G\u00fcell, wander the Gothic Quarter and Las Ramblas, and enjoy the tapas culture. With sunshine, art and sea air, Barcelona is one of Europe\'s most enjoyable city breaks.' },
   { name: 'Rome', kind: 'international', region: 'Italy', featured: 0, image: 'rome',
     description: 'Rome is Italy\'s capital and an open-air museum, layering ancient, Renaissance and baroque history across every quarter. Explore the Colosseum, Roman Forum and Pantheon, toss a coin in the Trevi Fountain, and visit Vatican City. With superb food and the Amalfi, Florence and Tuscany within reach, Rome is the perfect base for a European adventure.' }
 ];
@@ -212,53 +460,56 @@ const SEED_PACKAGES = [
     title: 'Annapurna Base Camp Trek', category: 'trekking', destination: 'Annapurna, Nepal',
     days: 12, nights: 11, price: 78000, discount: 8, image: 'annapurna-base-camp', featured: 1,
     summary: 'A classic teahouse trek into the heart of the Annapurna sanctuary, ending beneath a 360\u00b0 ring of giants.',
-    highlights: ['Annapurna Sanctuary', 'Jhinu Danda hot springs', 'Chhomrong village', 'Licensed trekking guide']
-  },
-  {
-    title: 'Chitwan Jungle Safari', category: 'domestic', destination: 'Chitwan, Nepal',
-    days: 3, nights: 2, price: 26000, discount: 0, image: 'chitwan-safari', featured: 0,
-    summary: 'Canoe the Rapti, track rhinos on foot with trained naturalists, and end the day with a Tharu cultural program.',
-    highlights: ['Canoe trip', 'Jungle walk with naturalist', 'Tharu cultural show', 'Elephant breeding centre visit']
+    highlights: ['Annapurna Sanctuary', 'Machhapuchhre views', 'Jhinu Danda hot springs', 'Gurung villages']
   },
   {
     title: 'Kathmandu Heritage & Culture Tour', category: 'historical', destination: 'Kathmandu Valley, Nepal',
-    days: 4, nights: 3, price: 32000, discount: 12, image: 'kathmandu-heritage', featured: 1,
-    summary: 'Seven UNESCO World Heritage sites across Kathmandu, Patan and Bhaktapur with a specialist cultural guide.',
-    highlights: ['Boudhanath Stupa', 'Pashupatinath', 'Patan Durbar Square', 'Bhaktapur Pottery Square']
+    days: 4, nights: 3, price: 24000, discount: 5, image: 'kathmandu-heritage', featured: 1,
+    summary: 'Seven UNESCO World Heritage Sites, ancient durbar squares and living temple courtyards across the valley.',
+    highlights: ['Kathmandu Durbar Square', 'Swayambhunath Stupa', 'Patan & Bhaktapur', 'Boudhanath at dusk']
   },
   {
-    title: 'Pashupatinath & Muktinath Yatra', category: 'religious', destination: 'Kathmandu & Mustang, Nepal',
-    days: 6, nights: 5, price: 54000, discount: 5, image: 'muktinath-yatra', featured: 0,
-    summary: 'A guided pilgrimage pairing the valley\u2019s holiest temples with the high-altitude shrine of Muktinath.',
-    highlights: ['Pashupatinath darshan', 'Muktinath temple', 'Jomsom flight', 'Pokhara stopover']
+    title: 'Everest Base Camp Trek', category: 'trekking', destination: 'Khumbu, Nepal',
+    days: 14, nights: 13, price: 145000, discount: 0, image: 'everest-base-camp', featured: 1,
+    summary: 'The world\u2019s most famous trek \u2014 Sherpa villages, Tengboche monastery and sunrise from Kala Patthar.',
+    highlights: ['Lukla to Namche', 'Tengboche Monastery', 'Kala Patthar sunrise', 'Everest Base Camp']
   },
   {
-    title: 'Amazing Thailand Holiday', category: 'international', destination: 'Thailand',
-    days: 5, nights: 4, price: 50000, discount: 34, image: 'thailand-holiday', featured: 1,
-    summary: 'Bangkok temples, a Chao Phraya river cruise and free time in the markets \u2014 flights and visa support included.',
-    highlights: ['Grand Palace & Wat Pho', 'River dinner cruise', 'Safari World', 'Visa processing assistance']
+    title: 'Chitwan Jungle Safari', category: 'domestic', destination: 'Chitwan, Nepal',
+    days: 3, nights: 2, price: 21000, discount: 0, image: 'chitwan', featured: 0,
+    summary: 'Canoe the Rapti, walk the sal forest and look for rhino, tiger and crocodile in Nepal\u2019s first national park.',
+    highlights: ['Canoe safari', 'Jungle walk', 'Tharu cultural evening', 'Elephant breeding centre']
   },
   {
-    title: 'London Heritage & Culture Tour', category: 'international', destination: 'United Kingdom',
-    days: 6, nights: 5, price: 165000, discount: 25, image: 'london-heritage', featured: 1,
-    summary: 'Stonehenge, Windsor Castle and a full London city tour \u2014 with visa documentation handled end-to-end.',
-    highlights: ['Stonehenge day trip', 'Windsor Castle', 'Bath city tour', 'UK visa document support']
+    title: 'Muktinath Pilgrimage Yatra', category: 'religious', destination: 'Mustang, Nepal',
+    days: 5, nights: 4, price: 32000, discount: 0, image: 'muktinath-yatra', featured: 0,
+    summary: 'A sacred journey to the 108 water spouts of Muktinath, set high in the trans-Himalayan Mustang valley.',
+    highlights: ['Muktinath temple', '108 water spouts', 'Jomsom valley', 'Kagbeni village']
   },
   {
-    title: 'Bali Island Escape', category: 'international', destination: 'Indonesia',
-    days: 5, nights: 4, price: 62000, discount: 15, image: 'bali-escape', featured: 0,
-    summary: 'Rice terraces, cliff-top temples and beach time, with a private car and driver throughout.',
-    highlights: ['Ubud rice terraces', 'Uluwatu sunset temple', 'Nusa Penida day trip', 'Private transfers']
+    title: 'Amazing Thailand Holiday', category: 'international', destination: 'Bangkok & Pattaya, Thailand',
+    days: 6, nights: 5, price: 92000, discount: 12, image: 'thailand-holiday', featured: 1,
+    summary: 'Golden temples, floating markets and island beaches \u2014 a six-day taste of Thailand at an easy pace.',
+    highlights: ['Grand Palace & Wat Pho', 'Pattaya beaches', 'Floating market', 'Chao Phraya cruise']
+  },
+  {
+    title: 'Bali Escape', category: 'international', destination: 'Bali, Indonesia',
+    days: 5, nights: 4, price: 88000, discount: 10, image: 'bali-escape', featured: 0,
+    summary: 'Rice terraces, temple sunsets and beach clubs \u2014 the island of the gods in a five-day escape.',
+    highlights: ['Tegallalang rice terraces', 'Uluwatu sunset', 'Nusa Penida day trip', 'Ubud art market']
+  },
+  {
+    title: 'London Heritage & Culture Tour Package', category: 'international', destination: 'London, United Kingdom',
+    days: 7, nights: 6, price: 165000, discount: 0, image: 'london-heritage', featured: 0,
+    summary: 'A week in the British capital \u2014 royal palaces, world-class museums and day trips to Windsor and Bath.',
+    highlights: ['Tower of London', 'Buckingham Palace', 'British Museum', 'Windsor Castle day trip']
   }
 ];
 
 const SEED_TESTIMONIALS = [
-  { name: 'Anita Gurung', location: 'Kathmandu, Nepal', rating: 5,
-    content: 'The Annapurna trek was organised down to the last detail. Our guide was patient, knowledgeable and kept the whole group safe and laughing.' },
-  { name: 'David Mitchell', location: 'Manchester, UK', rating: 5,
-    content: 'We booked a Nepal round-trip from abroad and the team handled airport pickup, hotels and permits without a single hiccup. Genuinely hassle-free.' },
-  { name: 'Sujata Shrestha', location: 'Pokhara, Nepal', rating: 4,
-    content: 'Quick, clear pricing and honest advice on which season to travel. The Pokhara package was excellent value for a family of four.' }
+  { name: 'Anjali Sharma', location: 'Kathmandu, Nepal', rating: 5, content: 'The Annapurna trek was perfectly organised \u2014 clear itinerary, kind guides and a fair price. I would book again without hesitation.' },
+  { name: 'David Miller', location: 'Bristol, UK', rating: 5, content: 'From visa paperwork to airport pickup, everything was handled. Our family trip to Nepal ran smoothly from start to finish.' },
+  { name: 'Priya Nair', location: 'Kochi, India', rating: 4, content: 'Great value for the Thailand package and quick replies on WhatsApp. Only the hotel shuttle could have been faster.' }
 ];
 
 const SEED_POSTS = [
@@ -276,68 +527,65 @@ const SEED_POSTS = [
     author: 'Visa Desk', cover: 'visa-checklist' }
 ];
 
-function seedIfEmpty() {
-  const destCount = get('SELECT COUNT(*) AS n FROM destinations').n;
+/** Insert the built-in content only when a table is still empty. Idempotent. */
+async function seedIfEmpty() {
+  const destCount = Number((await get('SELECT COUNT(*) AS n FROM destinations')).n);
   if (destCount === 0) {
-    const stmt = db.prepare(
-      `INSERT INTO destinations
-        (name, slug, kind, region, image, description, featured, country, capital, currency, language, best_time, visa)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-    );
     for (const d of SEED_DESTINATIONS) {
       const det = DESTINATION_DETAILS[slugify(d.name)] || {};
-      stmt.run(d.name, slugify(d.name), d.kind, d.region, d.image, d.description, d.featured,
-        det.country || '', det.capital || '', det.currency || '', det.language || '',
-        det.best_time || '', det.visa || '');
+      await run(
+        `INSERT INTO destinations
+          (name, slug, kind, region, image, description, featured, country, capital, currency, language, best_time, visa)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [d.name, slugify(d.name), d.kind, d.region, d.image, d.description, d.featured,
+          det.country || '', det.capital || '', det.currency || '', det.language || '',
+          det.best_time || '', det.visa || '']
+      );
     }
   } else {
-    // Backfill the detail columns for rows created before those columns
-    // existed, so an already-seeded database gains the same Overview data
-    // without needing a reset.
-    const missing = all("SELECT id, slug FROM destinations WHERE country = '' OR best_time = ''");
-    if (missing.length) {
-      const upd = db.prepare(
-        'UPDATE destinations SET country = ?, capital = ?, currency = ?, language = ?, best_time = ?, visa = ? WHERE id = ?'
+    const missing = await all("SELECT id, slug FROM destinations WHERE country = '' OR best_time = ''");
+    for (const row of missing) {
+      const det = DESTINATION_DETAILS[row.slug];
+      if (!det) continue;
+      await run(
+        'UPDATE destinations SET country = ?, capital = ?, currency = ?, language = ?, best_time = ?, visa = ? WHERE id = ?',
+        [det.country, det.capital, det.currency, det.language, det.best_time, det.visa, row.id]
       );
-      for (const row of missing) {
-        const det = DESTINATION_DETAILS[row.slug];
-        if (!det) continue;
-        upd.run(det.country, det.capital, det.currency, det.language, det.best_time, det.visa, row.id);
-      }
     }
   }
 
-  const pkgCount = get('SELECT COUNT(*) AS n FROM packages').n;
+  const pkgCount = Number((await get('SELECT COUNT(*) AS n FROM packages')).n);
   if (pkgCount === 0) {
-    const stmt = db.prepare(
-      `INSERT INTO packages (title, slug, category, destination, days, nights, price, discount, image, summary, highlights, featured)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-    );
     for (const p of SEED_PACKAGES) {
-      stmt.run(p.title, slugify(p.title), p.category, p.destination, p.days, p.nights,
-        p.price, p.discount, p.image, p.summary, JSON.stringify(p.highlights), p.featured || 0);
+      await run(
+        `INSERT INTO packages (title, slug, category, destination, days, nights, price, discount, image, summary, highlights, featured)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [p.title, slugify(p.title), p.category, p.destination, p.days, p.nights,
+          p.price, p.discount, p.image, p.summary, JSON.stringify(p.highlights), p.featured || 0]
+      );
     }
   }
 
-  const testCount = get('SELECT COUNT(*) AS n FROM testimonials').n;
+  const testCount = Number((await get('SELECT COUNT(*) AS n FROM testimonials')).n);
   if (testCount === 0) {
-    const stmt = db.prepare('INSERT INTO testimonials (name, location, rating, content) VALUES (?, ?, ?, ?)');
     for (const t of SEED_TESTIMONIALS) {
-      stmt.run(t.name, t.location, t.rating, t.content);
+      await run('INSERT INTO testimonials (name, location, rating, content) VALUES (?, ?, ?, ?)',
+        [t.name, t.location, t.rating, t.content]);
     }
   }
 
-  const postCount = get('SELECT COUNT(*) AS n FROM blog_posts').n;
+  const postCount = Number((await get('SELECT COUNT(*) AS n FROM blog_posts')).n);
   if (postCount === 0) {
-    const stmt = db.prepare(
-      'INSERT INTO blog_posts (title, slug, excerpt, body, author, cover, published) VALUES (?, ?, ?, ?, ?, ?, 1)'
-    );
     for (const b of SEED_POSTS) {
-      stmt.run(b.title, slugify(b.title), b.excerpt, b.body, b.author, b.cover);
+      await run('INSERT INTO blog_posts (title, slug, excerpt, body, author, cover, published) VALUES (?, ?, ?, ?, ?, ?, 1)',
+        [b.title, slugify(b.title), b.excerpt, b.body, b.author, b.cover]);
     }
   }
 }
 
-seedIfEmpty();
-
-module.exports = { db, DB_PATH, slugify, all, get, run, seedIfEmpty };
+module.exports = {
+  db, driver, DB_PATH, DATABASE_URL, IS_PG, TABLES,
+  slugify, all, get, run, init, seedIfEmpty,
+  // Exported for the migration script + tests.
+  SCHEMA_PG, SCHEMA_SQLITE, toPgPlaceholders
+};

@@ -52,7 +52,7 @@ async function test(name, fn) {
 }
 
 async function main() {
-  const server = start();
+  const server = await start();
   await new Promise((resolve) => server.once('listening', resolve));
   const { port } = server.address();
   const base = `http://127.0.0.1:${port}`;
@@ -603,6 +603,55 @@ async function main() {
     assert.ok(/id="booking-form"/.test(js), 'the package detail must render a booking form');
     assert.ok(/\/api\/bookings/.test(js), 'the booking form must post to /api/bookings');
     assert.ok(/booking-panel/.test(js), 'the booking form must live in a booking panel');
+  });
+
+  // DATABASE LAYER: the storage abstraction must be driver-agnostic and the
+  // migration tooling must be present and correct (these guard the PostgreSQL
+  // switch so it cannot silently regress).
+  await test('db layer exposes a dual driver and shared async helpers', async () => {
+    const dbmod = require('./src/db');
+    assert.ok(['sqlite', 'postgres'].includes(dbmod.driver.kind), 'a known driver must be active');
+    for (const fn of ['all', 'get', 'run', 'init', 'seedIfEmpty']) {
+      assert.equal(typeof dbmod[fn], 'function', fn + ' must be exported');
+    }
+    // `?` -> `$n` rewriting is what lets one SQL string serve both drivers.
+    assert.equal(dbmod.toPgPlaceholders('SELECT * FROM t WHERE a = ? AND b = ?'),
+      'SELECT * FROM t WHERE a = $1 AND b = $2');
+    // The driver-agnostic migrator must use the driver contract, not PRAGMA.
+    const migrator = fs.readFileSync(path.join(__dirname, 'src', 'db-migrate.js'), 'utf8');
+    assert.ok(/driver\.columns\('destinations'\)/.test(migrator),
+      'db-migrate must ask the driver for columns (works on PG + SQLite)');
+    assert.ok(!/PRAGMA table_info/.test(migrator), 'db-migrate must not be SQLite-only');
+  });
+
+  await test('postgres schema mirrors the sqlite schema (same tables, no AUTOINCREMENT)', async () => {
+    const dbmod = require('./src/db');
+    for (const t of dbmod.TABLES) {
+      assert.ok(new RegExp('CREATE TABLE IF NOT EXISTS ' + t + '\\b').test(dbmod.SCHEMA_PG),
+        'pg schema must define ' + t);
+      assert.ok(new RegExp('CREATE TABLE IF NOT EXISTS ' + t + '\\b').test(dbmod.SCHEMA_SQLITE),
+        'sqlite schema must define ' + t);
+    }
+    assert.ok(!/AUTOINCREMENT/i.test(dbmod.SCHEMA_PG), 'pg schema must use SERIAL, not AUTOINCREMENT');
+    assert.ok(/SERIAL PRIMARY KEY/.test(dbmod.SCHEMA_PG), 'pg schema must use SERIAL PRIMARY KEY');
+    // Booleans stay INTEGER so the JSON the frontend sees is identical on both.
+    assert.ok(/featured\s+INTEGER/.test(dbmod.SCHEMA_PG) && /published\s+INTEGER/.test(dbmod.SCHEMA_PG),
+      'boolean-ish columns must stay INTEGER for frontend parity');
+  });
+
+  await test('migration tooling exists and preserves ids + password hashes', async () => {
+    const mig = fs.readFileSync(path.join(__dirname, 'scripts', 'sqlite-to-pg.js'), 'utf8');
+    // The two things that break real migrations must be handled explicitly.
+    assert.ok(/setval\(pg_get_serial_sequence/.test(mig),
+      'migration must reset SERIAL sequences (else the next insert reuses id 1)');
+    assert.ok(/password_hash/.test(mig),
+      'migration must copy password hashes');
+    assert.ok(/BEGIN/.test(mig) && /COMMIT/.test(mig),
+      'migration must run in a transaction so a failure rolls back');
+    // The persistence test must exist and restart the process twice.
+    const pers = fs.readFileSync(path.join(__dirname, 'scripts', 'persistence-test.js'), 'utf8');
+    assert.ok(/boot #1|boot\(env\)/.test(pers) && /child\s*\.kill|kill\('SIGTERM'\)/.test(pers),
+      'persistence test must stop and re-start the server');
   });
 
   // Cleanup

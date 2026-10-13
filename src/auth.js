@@ -62,7 +62,9 @@ function tokenFromRequest(req) {
  * not silently treat a bad token as an anonymous request.
  */
 function requireAuth(required = true) {
-  return (req, res, next) => {
+  // `async` so a throwing handler is reported through next(err) instead of
+  // becoming an unhandled rejection (Express 4 does not catch async errors).
+  return async (req, res, next) => {
     const token = tokenFromRequest(req);
     if (!token) {
       if (required) return res.status(401).json({ error: 'Authentication required' });
@@ -79,16 +81,16 @@ function requireAuth(required = true) {
 }
 
 /** Look up a user by email and return null when absent. */
-function findUserByEmail(email) {
-  return get('SELECT * FROM users WHERE email = ?', [String(email || '').toLowerCase().trim()]) || null;
+async function findUserByEmail(email) {
+  return (await get('SELECT * FROM users WHERE email = ?', [String(email || '').toLowerCase().trim()])) || null;
 }
 
 /** Create a user if the email is not already taken. Returns the new row. */
-function createUser({ email, password, name = 'Admin', role = 'admin' }) {
+async function createUser({ email, password, name = 'Admin', role = 'admin' }) {
   const normalised = String(email || '').toLowerCase().trim();
   if (!normalised || !password) throw new Error('email and password are required');
   const hash = hashPassword(password);
-  run('INSERT INTO users (email, password_hash, name, role) VALUES (?, ?, ?, ?)',
+  await run('INSERT INTO users (email, password_hash, name, role) VALUES (?, ?, ?, ?)',
     [normalised, hash, name, role]);
   return findUserByEmail(normalised);
 }
@@ -97,12 +99,12 @@ function createUser({ email, password, name = 'Admin', role = 'admin' }) {
  * Ensure at least one admin exists. Credentials come from env so a fresh
  * deployment is usable without a manual DB step.
  */
-function ensureAdmin() {
-  const count = get('SELECT COUNT(*) AS n FROM users').n;
+async function ensureAdmin() {
+  const count = Number((await get('SELECT COUNT(*) AS n FROM users')).n);
   if (count > 0) return null;
   const email = process.env.ADMIN_EMAIL || 'admin@himalayanvoyage.test';
   const password = process.env.ADMIN_PASSWORD || 'admin12345';
-  const user = createUser({ email, password, name: 'Administrator', role: 'admin' });
+  const user = await createUser({ email, password, name: 'Administrator', role: 'admin' });
   console.log(`[auth] created default admin <${email}>`);
   return user;
 }

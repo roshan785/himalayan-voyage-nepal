@@ -284,8 +284,8 @@ function brochure() {
 // Run
 // ---------------------------------------------------------------------------
 
-function main() {
-  const packages = all('SELECT * FROM packages ORDER BY id');
+async function main() {
+  const packages = await all('SELECT * FROM packages ORDER BY id');
   let count = 0;
   for (const pkg of packages) {
     itinerary(pkg);
@@ -319,4 +319,7 @@ function main() {
   console.log(`  ${packages.length} itineraries, ${VISA_COUNTRIES.length} visa checklists, 1 brochure`);
 }
 
-main();
+main().catch((err) => {
+  console.error('[fatal] document generation failed:', err.message);
+  process.exit(1);
+});
