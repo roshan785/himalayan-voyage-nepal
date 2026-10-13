@@ -6,3 +6,6 @@ mobile-audit/
 .DS_Store
 backups/
 secrets/
+.deploy-tools/
+.audit-tools/
+.audit2/
