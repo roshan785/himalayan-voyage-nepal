@@ -86,9 +86,14 @@ function fingerprint(rows, columns) {
   const report = [];
 
   try {
-    // Ensure the target schema exists (reuse the app's own DDL).
+    // Ensure the target schema exists — but ONLY for a real import.
+    // In --verify-only mode we must not write anything at all, otherwise the
+    // "read-only" check silently creates tables on the target (harmless for
+    // data, but it is still a write and would contradict what we promise).
     const { SCHEMA_PG } = require('../src/db');
-    await client.query(SCHEMA_PG);
+    if (!VERIFY_ONLY) {
+      await client.query(SCHEMA_PG);
+    }
 
     for (const table of TABLES) {
       const { rows, missing } = readTable(table);
