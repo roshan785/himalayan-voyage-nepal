@@ -231,6 +231,18 @@ function publicRouter() {
   const router = express.Router();
 
   router.get('/health', async (_req, res) => {
+    // Never expose the value — only whether the variable is present, whether it
+    // looks like PostgreSQL, and a short non-reversible fingerprint. Without
+    // this, a deployment that silently falls back to SQLite gives no way to tell
+    // "variable missing" apart from "variable present but malformed".
+    const rawUrl = process.env.DATABASE_URL || '';
+    const urlShape = {
+      present: rawUrl.length > 0,
+      isPostgres: /^postgres(ql)?:\/\//i.test(rawUrl.trim()),
+      fingerprint: rawUrl
+        ? require('crypto').createHash('sha256').update(rawUrl).digest('hex').slice(0, 8)
+        : null
+    };
     res.json({
       ok: true,
       service: 'himalayan-voyage',
@@ -238,7 +250,8 @@ function publicRouter() {
       // Lets anyone confirm from outside whether this instance is on persistent
       // PostgreSQL or the ephemeral SQLite fallback.
       db: driver.kind,
-      dbPersistent: driver.kind === 'postgres'
+      dbPersistent: driver.kind === 'postgres',
+      databaseUrl: urlShape
     });
   });
 

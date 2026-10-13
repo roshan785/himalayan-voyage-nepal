@@ -21,8 +21,28 @@
 const fs = require('fs');
 const path = require('path');
 
-const DATABASE_URL = process.env.DATABASE_URL || '';
+/**
+ * Normalise DATABASE_URL before it is used.
+ *
+ * A value pasted into a hosting dashboard easily arrives with a trailing
+ * newline, surrounding spaces or wrapping quotes. Left as-is it still looks
+ * "set" but fails `IS_PG`, so the app silently runs on the ephemeral SQLite
+ * fallback while every dashboard shows the variable as configured. Trimming
+ * here makes the driver decision independent of paste hygiene.
+ */
+function normaliseDatabaseUrl(raw) {
+  let v = String(raw == null ? '' : raw).trim();
+  if ((v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'"))) {
+    v = v.slice(1, -1).trim();
+  }
+  return v;
+}
+
+const DATABASE_URL = normaliseDatabaseUrl(process.env.DATABASE_URL || '');
 const IS_PG = /^postgres(ql)?:\/\//i.test(DATABASE_URL);
+if (process.env.DATABASE_URL && process.env.DATABASE_URL !== DATABASE_URL) {
+  console.warn('[db] DATABASE_URL had surrounding whitespace or quotes; normalised it.');
+}
 
 const DB_PATH = process.env.DB_PATH || path.join(__dirname, '..', 'data', 'travel.db');
 
