@@ -111,21 +111,36 @@ app.use((_req, res, next) => {
 const writeHits = new Map();
 const WRITE_LIMIT = 40;          // requests
 const WRITE_WINDOW_MS = 60_000;  // per minute, per IP
-// Prune expired entries periodically. Without this the map grows without bound
+// A stricter, separate bucket for login: 10 attempts/minute/IP slows credential
+// stuffing without locking a legitimate admin out. Counted per IP, not global.
+const loginHits = new Map();
+const LOGIN_LIMIT = 10;
+const LOGIN_WINDOW_MS = 60_000;
+// Prune expired entries periodically. Without this the maps grow without bound
 // (one entry per IP that ever wrote) — a slow memory leak on a long-lived
 // instance. The sweep only removes entries whose window has already reset.
 setInterval(() => {
   const now = Date.now();
-  for (const [ip, entry] of writeHits) {
-    if (now > entry.reset) writeHits.delete(ip);
-  }
+  for (const [ip, entry] of writeHits) if (now > entry.reset) writeHits.delete(ip);
+  for (const [ip, entry] of loginHits) if (now > entry.reset) loginHits.delete(ip);
 }, WRITE_WINDOW_MS).unref();
 
 app.use((req, res, next) => {
-  const isWrite = req.method === 'POST' && /^\/api\/(contact|newsletter|bookings|auth\/login)/.test(req.path);
-  if (!isWrite) return next();
   const ip = req.ip || req.socket.remoteAddress || 'unknown';
   const now = Date.now();
+  // Login gets its own, tighter window.
+  if (req.method === 'POST' && req.path === '/api/auth/login') {
+    const entry = loginHits.get(ip) || { count: 0, reset: now + LOGIN_WINDOW_MS };
+    if (now > entry.reset) { entry.count = 0; entry.reset = now + LOGIN_WINDOW_MS; }
+    entry.count += 1;
+    loginHits.set(ip, entry);
+    if (entry.count > LOGIN_LIMIT) {
+      return res.status(429).json({ error: 'Too many sign-in attempts, please wait a minute' });
+    }
+    return next();
+  }
+  const isWrite = req.method === 'POST' && /^\/api\/(contact|newsletter|bookings)/.test(req.path);
+  if (!isWrite) return next();
   const entry = writeHits.get(ip) || { count: 0, reset: now + WRITE_WINDOW_MS };
   if (now > entry.reset) {
     entry.count = 0;

@@ -84,6 +84,7 @@
         `</div>`;
     }).join('');
     return `
+    <a class="skip-link" href="#main">Skip to content</a>
     <div class="topbar">
       <div class="wrap">
         <div class="topbar__meta">
@@ -205,7 +206,76 @@
     const f = document.getElementById('site-footer');
     if (h) h.innerHTML = header();
     if (f) f.innerHTML = footer();
+    applySeo();
     loadCredits();
+  }
+
+  /**
+   * Add SEO/social metadata the static HTML does not carry, from the page's own
+   * content — so every page gets Open Graph tags, a canonical URL and structured
+   * data without editing 28 files by hand. Idempotent: skips anything already
+   * present. The canonical host is taken from the live origin so local previews
+   * never point search engines at a dev URL.
+   */
+  function applySeo() {
+    if (typeof document === 'undefined') return;
+    const head = document.head;
+    const origin = (location.origin || '').replace(/\/$/, '');
+    const path = location.pathname.replace(/index\.html$/, '');
+    const url = origin + path;
+    const title = (document.title || 'Himalayan Voyage Nepal').trim();
+    const desc = (document.querySelector('meta[name="description"]') || {}).content
+      || 'Himalayan Voyage Nepal \u2014 tours, trekking, visa services and custom itineraries in Nepal and worldwide.';
+    const image = (document.querySelector('meta[property="og:image"]') || {}).content
+      || origin + '/images/hero-himalaya.jpg';
+
+    const meta = (attr, key, content) => {
+      if (!content || document.querySelector(`meta[${attr}="${key}"]`)) return;
+      const m = document.createElement('meta');
+      m.setAttribute(attr, key);
+      m.setAttribute('content', content);
+      head.appendChild(m);
+    };
+    const link = (rel, href) => {
+      if (!href || document.querySelector(`link[rel="${rel}"]`)) return;
+      const l = document.createElement('link');
+      l.setAttribute('rel', rel);
+      l.setAttribute('href', href);
+      head.appendChild(l);
+    };
+
+    link('canonical', url);
+    meta('property', 'og:type', 'website');
+    meta('property', 'og:site_name', 'Himalayan Voyage Nepal');
+    meta('property', 'og:title', title);
+    meta('property', 'og:description', desc);
+    meta('property', 'og:url', url);
+    meta('property', 'og:image', image);
+    meta('name', 'twitter:card', 'summary_large_image');
+    meta('name', 'twitter:title', title);
+    meta('name', 'twitter:description', desc);
+    meta('name', 'twitter:image', image);
+
+    // JSON-LD: TravelAgency on the home page.
+    const isHome = path === '/' || path === '';
+    if (isHome && !document.querySelector('script[data-seo-jsonld]')) {
+      const data = {
+        '@context': 'https://schema.org',
+        '@type': 'TravelAgency',
+        name: 'Himalayan Voyage Nepal',
+        url: origin,
+        image,
+        telephone: '+977 9800000000',
+        email: 'hello@himalayanvoyage.test',
+        address: { '@type': 'PostalAddress', addressLocality: 'Pokhara', addressCountry: 'NP' },
+        areaServed: 'Worldwide'
+      };
+      const s = document.createElement('script');
+      s.type = 'application/ld+json';
+      s.setAttribute('data-seo-jsonld', '1');
+      s.textContent = JSON.stringify(data);
+      head.appendChild(s);
+    }
   }
 
   /**

@@ -1295,3 +1295,25 @@ a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible
   .login-panel { padding: 18px; }
   .login-panel .btn { min-height: 46px; }
 }
+
+/* ---------------------------------------------------------------------------
+   Accessibility: skip-to-content link (visible only on keyboard focus) so
+   keyboard and screen-reader users can bypass the navigation. Added 2026-10-13.
+   --------------------------------------------------------------------------- */
+.skip-link {
+  position: absolute;
+  left: -9999px;
+  top: 0;
+  z-index: 1000;
+  background: var(--brand, #0b5cab);
+  color: #fff;
+  padding: 10px 16px;
+  border-radius: 0 0 8px 0;
+  font-weight: 600;
+  text-decoration: none;
+}
+.skip-link:focus {
+  left: 0;
+  outline: 3px solid #ffd166;
+  outline-offset: 2px;
+}

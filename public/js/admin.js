@@ -384,11 +384,57 @@
     viewEl.innerHTML = '<div class="skeleton" style="height:60px"></div>';
     try {
       const data = await adminApi('/bookings');
-      const statusBadge = (st) => {
-        const map = { new: 'badge--off', confirmed: 'badge--ok', cancelled: 'badge--err', done: 'badge' };
-        return '<span class="badge ' + (map[st] || '') + '">' + App.escapeHtml(st) + '</span>';
-      };
-      const rows = (data.items || []).map((r) => `
+      renderBookingTable(data.items || []);
+    } catch (err) {
+      viewEl.innerHTML = `<div class="empty">Could not load bookings. ${App.escapeHtml(err.message)}</div>`;
+    }
+  }
+
+  /**
+   * Booking management with client-side search, status filter, bulk status
+   * changes and CSV export. Data is fetched once; filtering is instant and never
+   * re-queries. All values pass through App.escapeHtml before insertion.
+   */
+  function renderBookingTable(items) {
+    const viewEl = document.getElementById('view');
+    const state = { q: '', status: 'all' };
+    const statusBadge = (st) => {
+      const map = { new: 'badge--off', confirmed: 'badge--ok', cancelled: 'badge--err', done: 'badge' };
+      return '<span class="badge ' + (map[st] || '') + '">' + App.escapeHtml(st) + '</span>';
+    };
+    const counts = items.reduce((acc, r) => { acc[r.status] = (acc[r.status] || 0) + 1; return acc; }, {});
+
+    viewEl.innerHTML = `
+      <div class="toolbar" style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:14px">
+        <input id="bk-q" type="search" placeholder="Search name, email or package…" style="flex:1;min-width:200px;padding:9px 12px;border:1px solid #d5dbe4;border-radius:9px">
+        <select id="bk-status" style="padding:9px 12px;border:1px solid #d5dbe4;border-radius:9px">
+          <option value="all">All statuses (${items.length})</option>
+          <option value="new">New (${counts.new || 0})</option>
+          <option value="confirmed">Confirmed (${counts.confirmed || 0})</option>
+          <option value="cancelled">Cancelled (${counts.cancelled || 0})</option>
+          <option value="done">Done (${counts.done || 0})</option>
+        </select>
+        <button class="btn btn--ghost btn--sm" id="bk-export">Export CSV</button>
+      </div>
+      <div id="bk-summary" class="muted small" style="margin-bottom:8px"></div>
+      <div id="bk-table"></div>`;
+
+    const shown = () => {
+      const q = state.q.trim().toLowerCase();
+      return items.filter((r) => {
+        if (state.status !== 'all' && r.status !== state.status) return false;
+        if (!q) return true;
+        return [r.name, r.email, r.package_title, r.phone, r.travel_date]
+          .some((v) => String(v || '').toLowerCase().includes(q));
+      });
+    };
+
+    const paint = () => {
+      const list = shown();
+      const box = document.getElementById('bk-table');
+      const sum = document.getElementById('bk-summary');
+      sum.textContent = `Showing ${list.length} of ${items.length} bookings`;
+      const rows = list.map((r) => `
         <tr>
           <td>${App.escapeHtml(r.package_title || '\u2014')}</td>
           <td>${App.escapeHtml(r.name)}</td>
@@ -403,24 +449,42 @@
             <button class="icon-btn danger" data-del="${r.id}">Delete</button>
           </div></td>
         </tr>`).join('');
-      viewEl.innerHTML = `
+      box.innerHTML = `
         <div class="table-wrap"><table class="data">
           <thead><tr><th>Package</th><th>Customer</th><th>Email</th><th>Phone</th><th>Travellers</th><th>Travel Date</th><th>Status</th><th>Received</th><th>Actions</th></tr></thead>
-          <tbody>${rows || '<tr><td colspan="9" class="muted">No bookings yet.</td></tr>'}</tbody>
+          <tbody>${rows || '<tr><td colspan="9" class="muted">No bookings match.</td></tr>'}</tbody>
         </table></div>`;
-      viewEl.querySelectorAll('[data-edit]').forEach((b) => b.addEventListener('click', () => {
-        const item = (data.items || []).find((x) => String(x.id) === b.dataset.edit);
-        editorOpen('bookings', item);
+      box.querySelectorAll('[data-edit]').forEach((b) => b.addEventListener('click', () => {
+        editorOpen('bookings', items.find((x) => String(x.id) === b.dataset.edit));
       }));
-      viewEl.querySelectorAll('[data-del]').forEach((b) => b.addEventListener('click', async () => {
+      box.querySelectorAll('[data-del]').forEach((b) => b.addEventListener('click', async () => {
         if (!confirm('Delete this booking?')) return;
         await adminApi('/bookings/' + b.dataset.del, { method: 'DELETE' });
+        items = items.filter((x) => String(x.id) !== b.dataset.del);
         App.toast('Deleted', 'ok');
-        renderBookings();
+        renderBookingTable(items);
       }));
-    } catch (err) {
-      viewEl.innerHTML = `<div class="empty">Could not load bookings. ${App.escapeHtml(err.message)}</div>`;
-    }
+    };
+
+    document.getElementById('bk-q').addEventListener('input', (e) => { state.q = e.target.value; paint(); });
+    document.getElementById('bk-status').addEventListener('change', (e) => { state.status = e.target.value; paint(); });
+    document.getElementById('bk-export').addEventListener('click', () => exportCsv(shown()));
+    paint();
+  }
+
+  /** Download the given bookings as a CSV file (client-side, no data leaves the browser). */
+  function exportCsv(rows) {
+    const cols = ['id', 'package_title', 'name', 'email', 'phone', 'travellers', 'travel_date', 'status', 'created_at'];
+    const esc = (v) => '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"';
+    const csv = [cols.join(',')].concat(rows.map((r) => cols.map((c) => esc(r[c])).join(','))).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'bookings-' + new Date().toISOString().slice(0, 10) + '.csv';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(a.href);
   }
 
   async function renderContacts() {
@@ -443,10 +507,24 @@
           </div></td>
         </tr>`).join('');
       viewEl.innerHTML = `
+        <div class="toolbar" style="display:flex;gap:10px;justify-content:flex-end;margin-bottom:12px">
+          <button class="btn btn--ghost btn--sm" id="ct-export">Export CSV</button>
+        </div>
         <div class="table-wrap"><table class="data">
           <thead><tr><th>Name</th><th>Email</th><th>Phone</th><th>Subject</th><th>Message</th><th>Status</th><th>Date</th><th>Actions</th></tr></thead>
           <tbody>${rows || '<tr><td colspan="8" class="muted">No enquiries yet.</td></tr>'}</tbody>
         </table></div>`;
+      const ctExport = document.getElementById('ct-export');
+      if (ctExport) ctExport.addEventListener('click', () => {
+        const cols = ['id', 'name', 'email', 'phone', 'subject', 'message', 'handled', 'created_at'];
+        const esc = (v) => '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"';
+        const csv = [cols.join(',')].concat((data.items || []).map((r) => cols.map((c) => esc(r[c])).join(','))).join('\n');
+        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = 'enquiries-' + new Date().toISOString().slice(0, 10) + '.csv';
+        document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(a.href);
+      });
       viewEl.querySelectorAll('[data-toggle]').forEach((b) => b.addEventListener('click', async () => {
         await adminApi('/contacts/' + b.dataset.toggle, { method: 'PATCH', body: { handled: b.dataset.handled === '1' ? 0 : 1 } });
         App.toast('Updated', 'ok');

@@ -20,7 +20,9 @@
     "db:migrate": "node -e \"require('./src/db').init().then(k=>console.log('schema ready on',k))\"",
     "db:set-url": "node scripts/set-db-url.js",
     "migrate:apply": "CONFIRM_MIGRATION=yes node scripts/sqlite-to-pg.js",
-    "backup": "node scripts/backup-db.js"
+    "backup": "node scripts/backup-db.js",
+    "uptime": "node scripts/uptime-check.js",
+    "uptime:watch": "node scripts/uptime-check.js --watch"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",

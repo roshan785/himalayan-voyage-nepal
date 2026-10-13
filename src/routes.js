@@ -431,9 +431,12 @@ function publicRouter() {
       return res.status(401).json({ error: 'Invalid email or password' });
     }
     const token = issueToken(user);
-    // HttpOnly cookie for same-origin browser use; token also returned for API clients.
+    // HttpOnly cookie for same-origin browser use; token also returned for API
+    // clients. `Secure` is added in production (HTTPS); over plain-http local
+    // development browsers would otherwise drop the cookie entirely.
+    const secure = (process.env.NODE_ENV === 'production' || req.secure) ? ' Secure;' : '';
     res.setHeader('Set-Cookie',
-      `${TOKEN_COOKIE}=${encodeURIComponent(token)}; HttpOnly; SameSite=Lax; Path=/; Max-Age=43200`);
+      `${TOKEN_COOKIE}=${encodeURIComponent(token)}; HttpOnly;${secure} SameSite=Lax; Path=/; Max-Age=43200`);
     res.json({ ok: true, token, user: { id: user.id, email: user.email, name: user.name, role: user.role } });
   });
 
