@@ -24,6 +24,14 @@ const TMP_DB = path.join(os.tmpdir(), `hv-test-${Date.now()}.db`);
 const TEST_ADMIN_EMAIL = 'admin' + '@test.local';
 const TEST_ADMIN_PASSWORD = randomSecret();
 
+// Isolation. SQLite: a private temp file. PostgreSQL: a private SCHEMA inside the
+// given database. Without this a re-run would find a previous run's admin row
+// (whose password is random per run) and login would 401 — the suite must be
+// idempotent so it can be run repeatedly.
+const TEST_PG_SCHEMA = 'hvtest_' + crypto.randomBytes(5).toString('hex');
+if (/^postgres(ql)?:\/\//i.test(process.env.DATABASE_URL || '')) {
+  process.env.PG_SCHEMA = TEST_PG_SCHEMA;
+}
 process.env.DB_PATH = TMP_DB;
 process.env.JWT_SECRET = randomSecret();
 process.env.ADMIN_EMAIL = TEST_ADMIN_EMAIL;
@@ -656,6 +664,26 @@ async function main() {
 
   // Cleanup
   server.close();
+  // Drop the test-only PostgreSQL schema through a SEPARATE, plain connection.
+  // Using the app's pool here is unreliable: its connections carry
+  // `search_path=<schema>` as a startup parameter, and the DROP then fails
+  // silently inside the catch, leaking one schema per run.
+  if (TEST_PG_SCHEMA && /^postgres(ql)?:\/\//i.test(process.env.DATABASE_URL || '')) {
+    try {
+      const { Client } = require('pg');
+      const cleaner = new Client({
+        connectionString: process.env.DATABASE_URL,
+        ssl: /sslmode=disable/i.test(process.env.DATABASE_URL) ? false : { rejectUnauthorized: false }
+      });
+      await cleaner.connect();
+      await cleaner.query(`DROP SCHEMA IF EXISTS ${TEST_PG_SCHEMA} CASCADE`);
+      await cleaner.end();
+      console.log('\n[cleanup] dropped test schema ' + TEST_PG_SCHEMA);
+    } catch (err) {
+      console.log('\n[cleanup] could not drop test schema ' + TEST_PG_SCHEMA + ': ' + err.message);
+    }
+    try { await require('./src/db').driver.close(); } catch (_e) { /* best effort */ }
+  }
   try { fs.unlinkSync(TMP_DB); } catch (_e) { /* best effort */ }
   try { fs.unlinkSync(TMP_DB + '-wal'); } catch (_e) { /* best effort */ }
   try { fs.unlinkSync(TMP_DB + '-shm'); } catch (_e) { /* best effort */ }

@@ -314,13 +314,38 @@ function createPgDriver() {
   const host = (() => { try { return new URL(DATABASE_URL).hostname; } catch (_e) { return ''; } })();
   const isLocal = host === 'localhost' || host === '127.0.0.1' || host === '::1';
   const needsSsl = !isLocal && !/sslmode=disable/i.test(DATABASE_URL);
+
+  // Optional schema isolation (used by the test suite). When PG_SCHEMA is set,
+  // every pooled connection is pinned to that schema, so a test run gets its own
+  // empty namespace inside a shared database without touching `public`. The name
+  // is validated because it is interpolated into DDL.
+  const PG_SCHEMA = String(process.env.PG_SCHEMA || '').trim();
+  if (PG_SCHEMA && !/^[a-z_][a-z0-9_]{0,40}$/.test(PG_SCHEMA)) {
+    throw new Error('PG_SCHEMA must match /^[a-z_][a-z0-9_]{0,40}$/ — got: ' + PG_SCHEMA);
+  }
+
   const pool = new Pool({
     connectionString: DATABASE_URL,
     max: Number(process.env.PG_POOL_MAX || 5),
     idleTimeoutMillis: 30_000,
     connectionTimeoutMillis: 15_000,
-    ssl: needsSsl ? { rejectUnauthorized: false } : false
+    ssl: needsSsl ? { rejectUnauthorized: false } : false,
+    // The search_path is applied as a STARTUP parameter, so it is in effect for
+    // every query on the connection. Doing it in a 'connect' listener races the
+    // first query (the tables end up in `public` and the next SELECT fails with
+    // 42P01).
+    ...(PG_SCHEMA ? { options: `-c search_path=${PG_SCHEMA}` } : {})
   });
+  if (PG_SCHEMA) {
+    // The schema itself has to exist before a connection can select it, so it is
+    // created once, up front, through a throwaway client with the default path.
+    pool.__ensureSchema = (async () => {
+      const c = await pool.connect();
+      try {
+        await c.query(`CREATE SCHEMA IF NOT EXISTS ${PG_SCHEMA}`);
+      } finally { c.release(); }
+    })();
+  }
   // A failed idle client must never crash the process.
   pool.on('error', (err) => console.error('[db] idle pg client error:', err.message));
 
@@ -387,6 +412,8 @@ async function run(sql, params = []) { return driver.run(sql, params); }
 
 /** Create the schema (idempotent) — explicit so a deploy can call it. */
 async function init() {
+  // With PG_SCHEMA set, wait for the namespace to exist before any DDL runs.
+  if (driver.raw && driver.raw.__ensureSchema) await driver.raw.__ensureSchema;
   await driver.applySchema();
   const { ensureDestinationColumns } = require('./db-migrate');
   await ensureDestinationColumns(driver);
