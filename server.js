@@ -198,6 +198,17 @@ if (require.main === module) {
     console.error('[fatal] failed to start:', err.message);
     process.exit(1);
   });
+
+  // Last-resort guards so one stray rejection cannot take the whole site down.
+  // A handled request already returns 500 via the express error handler; these
+  // catch anything that escapes (e.g. a background timer) and keep the process
+  // serving instead of exiting on an uncaught error.
+  process.on('unhandledRejection', (reason) => {
+    console.error('[unhandledRejection]', reason && reason.message ? reason.message : reason);
+  });
+  process.on('uncaughtException', (err) => {
+    console.error('[uncaughtException]', err && err.stack ? err.stack : err);
+  });
 }
 
 module.exports = { app, start };
