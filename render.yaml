@@ -1,27 +1,45 @@
 # Render Blueprint for Himalayan Voyage Nepal.
 #
-# The service was originally created in the dashboard; this file documents the
-# required production configuration and can be used to rebuild the service.
-# Secrets are NOT stored here — `sync: false` makes Render prompt for them.
+# This file is the source of truth for the service configuration. It is applied
+# through the Quickstart page (Add new -> Blueprint) because the dashboard cannot
+# move a running service under Blueprint management.
+#
+# Secrets are NEVER stored here. `sync: false` marks a variable as required, so
+# Render prompts for its value and keeps it encrypted in the dashboard.
+#
+# Required values (all already generated, mode 600, never committed):
+#   DATABASE_URL    -> apps/travel-nepal/.env
+#   JWT_SECRET      -> ~/.openos/secrets/travel-nepal-jwt-secret.txt
+#   ADMIN_PASSWORD  -> ~/.openos/secrets/travel-nepal-admin.txt
+
 services:
   - type: web
     name: himalayan-voyage-nepal
     runtime: node
     plan: free
     branch: master
+    autoDeploy: true
     buildCommand: npm install
     startCommand: npm start
     healthCheckPath: /api/health
     envVars:
+      # Pin the runtime the code is tested on (node:sqlite needs Node 20+; the
+      # app is verified on 22).
       - key: NODE_VERSION
         value: "22.22.1"
-      # Persistent storage. Without it the app falls back to SQLite and data is
-      # lost on every redeploy (health reports dbPersistent:false).
+
+      # Persistent storage. Without DATABASE_URL the app falls back to SQLite,
+      # which does not survive a redeploy on the free plan - /api/health then
+      # reports dbPersistent:false.
       - key: DATABASE_URL
         sync: false
+
       # Signs admin JWTs. Must be a long random string in production.
       - key: JWT_SECRET
         sync: false
+
+      # Credentials for the FIRST admin only - ensureAdmin() seeds the account
+      # when the users table is empty and never overwrites an existing one.
       - key: ADMIN_EMAIL
         value: admin@himalayanvoyage.test
       - key: ADMIN_PASSWORD
