@@ -263,7 +263,8 @@ function publicRouter() {
           : null,
         exactKeyPresent: Object.prototype.hasOwnProperty.call(process.env, 'DATABASE_URL'),
         matchingKeyNames: dbKeyNames,
-        keysHoldingPostgresUrl
+        keysHoldingPostgresUrl,
+        envSource: process.env.OPENOS_ENV_SOURCE || null
       },
       env: envPresence
     });

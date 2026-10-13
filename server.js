@@ -31,6 +31,37 @@ const fs = require('fs');
   }
 })();
 
+// Some hosting dashboards expose a variable as a MOUNTED SECRET FILE rather than
+// an environment variable (Render -> "Secret Files" writes to /etc/secrets/).
+// Such a value never reaches process.env, so the app would silently fall back to
+// SQLite while the dashboard shows the variable as configured. Read the usual
+// mount points as a fallback; only the chosen path is ever logged, never the
+// value. `OPENOS_ENV_SOURCE` records where DATABASE_URL came from for /api/health.
+(function loadMountedSecrets() {
+  const candidates = {
+    DATABASE_URL: ['/etc/secrets/DATABASE_URL', '/etc/secrets/database_url', '/run/secrets/DATABASE_URL'],
+    JWT_SECRET: ['/etc/secrets/JWT_SECRET', '/etc/secrets/jwt_secret', '/run/secrets/JWT_SECRET'],
+    ADMIN_PASSWORD: ['/etc/secrets/ADMIN_PASSWORD', '/etc/secrets/admin_password', '/run/secrets/ADMIN_PASSWORD']
+  };
+  for (const [key, paths] of Object.entries(candidates)) {
+    if ((process.env[key] || '').length > 0) continue;
+    for (const p of paths) {
+      try {
+        if (!fs.existsSync(p)) continue;
+        const value = fs.readFileSync(p, 'utf8').trim();
+        if (!value) continue;
+        process.env[key] = value;
+        if (key === 'DATABASE_URL') process.env.OPENOS_ENV_SOURCE = 'file:' + p;
+        console.log(`[env] ${key} loaded from mounted secret file ${p}`);
+        break;
+      } catch (_e) { /* unreadable mount — try the next candidate */ }
+    }
+  }
+  if (!process.env.OPENOS_ENV_SOURCE && (process.env.DATABASE_URL || '').length > 0) {
+    process.env.OPENOS_ENV_SOURCE = 'env';
+  }
+})();
+
 const express = require('express');
 const { ensureAdmin } = require('./src/auth');
 const { publicRouter, adminRouter } = require('./src/routes');
