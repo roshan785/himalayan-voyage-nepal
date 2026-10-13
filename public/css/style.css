@@ -138,13 +138,26 @@ img { max-width: 100%; display: block; }
   .topbar__social a { min-width: 36px; justify-content: center; }
 }
 
+/* NOTE: the frosted-glass blur lives on a ::before pseudo-element, NOT on
+   .site-header itself. `backdrop-filter` turns an element into the containing
+   block for its `position:fixed` descendants — with it on the header the mobile
+   nav drawer was boxed inside the 108px-tall header instead of the viewport, so
+   only a handful of menu links were visible. Moving the filter to a childless
+   pseudo-element removes that containing block. */
 .site-header {
   position: sticky;
   top: 0;
   z-index: 60;
+  border-bottom: 1px solid var(--line);
+}
+.site-header::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
   background: rgba(255, 255, 255, .94);
   backdrop-filter: blur(9px);
-  border-bottom: 1px solid var(--line);
+  -webkit-backdrop-filter: blur(9px);
 }
 .site-header__inner {
   display: flex;
