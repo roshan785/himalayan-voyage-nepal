@@ -36,14 +36,32 @@ function readSecret() {
       process.stdin.on('end', () => resolve(buf.trim()));
     });
   }
-  // Clipboard. Needs a display, so the same environment the browser uses.
+  // Clipboard. Needs a display, so it runs with the same environment the
+  // browser session uses. XAUTHORITY is mandatory for xclip on this setup, and
+  // it is only discoverable from a running desktop process, so it is looked up
+  // when the variable is not already present.
+  const uid = typeof process.getuid === 'function' ? process.getuid() : 1000;
   const env = {
     ...process.env,
     DISPLAY: process.env.DISPLAY || ':0',
     WAYLAND_DISPLAY: process.env.WAYLAND_DISPLAY || 'wayland-0',
-    XDG_RUNTIME_DIR: process.env.XDG_RUNTIME_DIR || `/run/user/${process.getuid ? process.getuid() : 1000}`
+    XDG_RUNTIME_DIR: process.env.XDG_RUNTIME_DIR || `/run/user/${uid}`,
+    DBUS_SESSION_BUS_ADDRESS: process.env.DBUS_SESSION_BUS_ADDRESS || `unix:path=/run/user/${uid}/bus`
   };
-  for (const [cmd, args] of [['wl-paste', []], ['xclip', ['-selection', 'clipboard', '-o']], ['xsel', ['-b']]]) {
+  if (!env.XAUTHORITY) {
+    // Try the inherited value from a live desktop process (gnome-shell, then the
+    // session bus). Without this, xclip fails with "can't open display".
+    for (const procName of ['gnome-shell', 'Xwayland', 'gnome-session-binary']) {
+      try {
+        const pid = execFileSync('pgrep', ['-n', procName], { encoding: 'utf8' }).trim();
+        if (!pid) continue;
+        const environ = fs.readFileSync(`/proc/${pid}/environ`, 'utf8');
+        const found = environ.split('\0').find((v) => v.startsWith('XAUTHORITY='));
+        if (found) { env.XAUTHORITY = found.slice('XAUTHORITY='.length); break; }
+      } catch (_e) { /* try the next process */ }
+    }
+  }
+  for (const [cmd, args] of [['xclip', ['-selection', 'clipboard', '-o']], ['wl-paste', ['--no-newline']], ['xsel', ['-b']]]) {
     try {
       const out = execFileSync(cmd, args, { env, encoding: 'utf8', timeout: 5000 });
       if (out && out.trim()) return Promise.resolve(out.trim());
