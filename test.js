@@ -550,6 +550,61 @@ async function main() {
       'the closed drawer must remain parked off-canvas');
   });
 
+  // BOOKINGS: the public booking endpoint must accept a valid request, reject a
+  // bad one, and the row must then be visible + editable through the protected
+  // admin API (this is the admin-panel <-> frontend link the user asked for).
+  await test('bookings flow: public create -> admin list -> admin status update', async () => {
+    const bad = await req('POST', '/api/bookings', { body: { name: '', email: 'nope' } });
+    assert.equal(bad.status, 400, 'a missing name / invalid email must be rejected');
+
+    const created = await req('POST', '/api/bookings', { body: {
+      name: 'Bookings Test', email: 'bookings@test.local',
+      phone: '9800000000', travellers: 2, travel_date: '2026-12-24',
+      package_slug: 'pokhara-leisure-tour', message: 'e2e'
+    } });
+    assert.equal(created.status, 201, 'a valid booking must be created');
+    assert.ok(created.data.id, 'the created booking must return its id');
+
+    const noAuth = await req('GET', '/api/admin/bookings');
+    assert.equal(noAuth.status, 401, 'bookings are private to the admin');
+
+    const list = await req('GET', '/api/admin/bookings', { token });
+    assert.equal(list.status, 200);
+    const found = (list.data.items || []).find((b) => b.id === created.data.id);
+    assert.ok(found, 'the booking must appear in the admin list');
+    assert.equal(found.name, 'Bookings Test');
+    assert.equal(found.status, 'new');
+    assert.equal(found.package_title, 'Pokhara Leisure Tour',
+      'the package title must be resolved from the slug for the admin view');
+
+    const upd = await req('PUT', '/api/admin/bookings/' + created.data.id, {
+      body: { name: 'Bookings Test', email: 'bookings@test.local', status: 'confirmed' },
+      token
+    });
+    assert.equal(upd.status, 200);
+    assert.equal(upd.data.item.status, 'confirmed', 'the status update must persist');
+  });
+
+  // ADMIN UI wiring: the console must expose a Bookings view and image fields.
+  await test('admin console exposes bookings + image management', async () => {
+    const adminJs = fs.readFileSync(path.join(__dirname, 'public', 'js', 'admin.js'), 'utf8');
+    assert.ok(/bookings:\s*\{/.test(adminJs), 'admin.js must define a bookings view');
+    assert.ok(/renderBookings/.test(adminJs), 'admin.js must render the bookings table');
+    assert.ok(/type:\s*'image'/.test(adminJs), 'admin.js must support image fields');
+    assert.ok(/wireImageFields/.test(adminJs), 'image fields must wire an upload + preview');
+    const adminHtml = fs.readFileSync(path.join(__dirname, 'public', 'admin.html'), 'utf8');
+    assert.ok(/data-view="bookings"/.test(adminHtml), 'admin.html must show a Bookings nav item');
+  });
+
+  // FRONTEND: package detail pages must offer a booking form that posts to the
+  // public bookings API (so website -> admin panel is connected).
+  await test('package detail page has a booking form wired to the API', async () => {
+    const js = fs.readFileSync(path.join(__dirname, 'public', 'js', 'packages.js'), 'utf8');
+    assert.ok(/id="booking-form"/.test(js), 'the package detail must render a booking form');
+    assert.ok(/\/api\/bookings/.test(js), 'the booking form must post to /api/bookings');
+    assert.ok(/booking-panel/.test(js), 'the booking form must live in a booking panel');
+  });
+
   // Cleanup
   server.close();
   try { fs.unlinkSync(TMP_DB); } catch (_e) { /* best effort */ }

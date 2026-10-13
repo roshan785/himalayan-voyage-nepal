@@ -138,6 +138,7 @@
         { name: 'nights', label: 'Nights', type: 'number' },
         { name: 'price', label: 'Price (Rs.)', type: 'number' },
         { name: 'discount', label: 'Discount (%)', type: 'number' },
+        { name: 'image', label: 'Image', type: 'image' },
         { name: 'summary', label: 'Summary', type: 'textarea' },
         { name: 'highlights', label: 'Highlights (one per line)', type: 'lines' },
         { name: 'featured', label: 'Featured', type: 'checkbox' }
@@ -151,7 +152,14 @@
         { name: 'name', label: 'Name', type: 'text', required: true },
         { name: 'kind', label: 'Kind', type: 'select', options: ['nepal', 'international'] },
         { name: 'region', label: 'Region', type: 'text' },
+        { name: 'image', label: 'Image', type: 'image' },
         { name: 'description', label: 'Description', type: 'textarea' },
+        { name: 'country', label: 'Country', type: 'text' },
+        { name: 'capital', label: 'Capital', type: 'text' },
+        { name: 'currency', label: 'Currency', type: 'text' },
+        { name: 'language', label: 'Language', type: 'text' },
+        { name: 'best_time', label: 'Best Time to Visit', type: 'text' },
+        { name: 'visa', label: 'Visa Requirements', type: 'text' },
         { name: 'featured', label: 'Featured', type: 'checkbox' }
       ],
       columns: ['id', 'name', 'kind', 'region', 'featured']
@@ -164,9 +172,25 @@
         { name: 'excerpt', label: 'Excerpt', type: 'textarea' },
         { name: 'body', label: 'Body', type: 'textarea' },
         { name: 'author', label: 'Author', type: 'text' },
+        { name: 'cover', label: 'Cover Image', type: 'image' },
         { name: 'published', label: 'Published', type: 'checkbox' }
       ],
       columns: ['id', 'title', 'author', 'published', 'created_at']
+    },
+    bookings: {
+      title: 'Bookings',
+      endpoint: '/bookings',
+      fields: [
+        { name: 'package_title', label: 'Package', type: 'text' },
+        { name: 'name', label: 'Customer Name', type: 'text', required: true },
+        { name: 'email', label: 'Email', type: 'text' },
+        { name: 'phone', label: 'Phone', type: 'text' },
+        { name: 'travellers', label: 'Travellers', type: 'number' },
+        { name: 'travel_date', label: 'Travel Date', type: 'text' },
+        { name: 'status', label: 'Status', type: 'select', options: ['new', 'confirmed', 'cancelled', 'done'] },
+        { name: 'message', label: 'Message', type: 'textarea' }
+      ],
+      columns: ['id', 'package_title', 'name', 'travellers', 'status']
     },
     testimonials: {
       title: 'Testimonials',
@@ -198,6 +222,23 @@
       const text = Array.isArray(v) ? v.join('\n') : v;
       return `<div class="field"><label for="${id}">${f.label}</label><textarea id="${id}" name="${f.name}">${App.escapeHtml(text)}</textarea></div>`;
     }
+    if (f.type === 'image') {
+      // Image picker: paste a URL / filename OR upload a file (turned into a
+      // data URL if it is small enough). A live preview shows what the frontend
+      // will render, so the admin sees the change before saving.
+      const preview = v ? `<img class="img-preview" src="${App.escapeHtml(App.imgSrc(v))}" alt="">` : '';
+      return `<div class="field">
+        <label for="${id}">${f.label}</label>
+        <div class="img-field">
+          <div class="img-field__main">
+            <input id="${id}" name="${f.name}" type="text" value="${App.escapeHtml(v)}" placeholder="images/my-photo.jpg or https://…">
+            <input type="file" accept="image/*" data-img-upload="${f.name}" class="img-upload">
+          </div>
+          <div class="img-field__preview" data-img-preview="${f.name}">${preview}</div>
+        </div>
+        <span class="small muted">Paste a path/URL or choose a file (small files are embedded).</span>
+      </div>`;
+    }
     return `<div class="field"><label for="${id}">${f.label}${f.required ? ' *' : ''}</label><input id="${id}" name="${f.name}" type="${f.type}" value="${App.escapeHtml(v)}" ${f.required ? 'required' : ''}></div>`;
   }
 
@@ -222,7 +263,45 @@
     form.dataset.view = view;
     form.dataset.id = item ? item.id : '';
     form.innerHTML = cfg.fields.map((f) => fieldHtml(f, item ? item[f.name] : (f.type === 'checkbox' ? 1 : ''))).join('');
+    wireImageFields(form);
     backdrop.classList.add('is-open');
+  }
+
+  /**
+   * Let an admin pick an image for a text/image field: typing a path keeps it,
+   * choosing a file reads it as a data URL (only when small, so we never blow
+   * the 1 MB request limit) and updates the preview immediately.
+   */
+  function wireImageFields(form) {
+    form.querySelectorAll('[data-img-upload]').forEach((input) => {
+      input.addEventListener('change', () => {
+        const file = input.files && input.files[0];
+        if (!file) return;
+        const target = form.querySelector('#fld-' + input.dataset.imgUpload);
+        const preview = form.querySelector('[data-img-preview="' + input.dataset.imgUpload + '"]');
+        if (file.size > 400 * 1024) {
+          App.toast('Image too large (max 400 KB) \u2014 use a URL or compress it.', 'err');
+          input.value = '';
+          return;
+        }
+        const reader = new FileReader();
+        reader.onload = () => {
+          if (target) target.value = reader.result;
+          if (preview) preview.innerHTML = '<img class="img-preview" src="' + reader.result + '" alt="">';
+        };
+        reader.readAsDataURL(file);
+      });
+    });
+    // Keep the preview in step when the admin edits the text path directly.
+    form.querySelectorAll('[data-img-preview]').forEach((box) => {
+      const name = box.dataset.imgPreview;
+      const input = form.querySelector('#fld-' + name);
+      if (!input) return;
+      input.addEventListener('input', () => {
+        const val = input.value.trim();
+        box.innerHTML = val ? '<img class="img-preview" src="' + App.escapeHtml(App.imgSrc(val)) + '" alt="">' : '';
+      });
+    });
   }
 
   function editorClose() {
@@ -300,6 +379,50 @@
     }
   }
 
+  async function renderBookings() {
+    const viewEl = document.getElementById('view');
+    viewEl.innerHTML = '<div class="skeleton" style="height:60px"></div>';
+    try {
+      const data = await adminApi('/bookings');
+      const statusBadge = (st) => {
+        const map = { new: 'badge--off', confirmed: 'badge--ok', cancelled: 'badge--err', done: 'badge' };
+        return '<span class="badge ' + (map[st] || '') + '">' + App.escapeHtml(st) + '</span>';
+      };
+      const rows = (data.items || []).map((r) => `
+        <tr>
+          <td>${App.escapeHtml(r.package_title || '\u2014')}</td>
+          <td>${App.escapeHtml(r.name)}</td>
+          <td>${App.escapeHtml(r.email)}</td>
+          <td>${App.escapeHtml(r.phone || '\u2014')}</td>
+          <td>${r.travellers}</td>
+          <td>${r.travel_date ? App.escapeHtml(r.travel_date) : '\u2014'}</td>
+          <td>${statusBadge(r.status)}</td>
+          <td>${App.formatDate(r.created_at)}</td>
+          <td><div class="row-actions">
+            <button class="icon-btn" data-edit="${r.id}">Edit</button>
+            <button class="icon-btn danger" data-del="${r.id}">Delete</button>
+          </div></td>
+        </tr>`).join('');
+      viewEl.innerHTML = `
+        <div class="table-wrap"><table class="data">
+          <thead><tr><th>Package</th><th>Customer</th><th>Email</th><th>Phone</th><th>Travellers</th><th>Travel Date</th><th>Status</th><th>Received</th><th>Actions</th></tr></thead>
+          <tbody>${rows || '<tr><td colspan="9" class="muted">No bookings yet.</td></tr>'}</tbody>
+        </table></div>`;
+      viewEl.querySelectorAll('[data-edit]').forEach((b) => b.addEventListener('click', () => {
+        const item = (data.items || []).find((x) => String(x.id) === b.dataset.edit);
+        editorOpen('bookings', item);
+      }));
+      viewEl.querySelectorAll('[data-del]').forEach((b) => b.addEventListener('click', async () => {
+        if (!confirm('Delete this booking?')) return;
+        await adminApi('/bookings/' + b.dataset.del, { method: 'DELETE' });
+        App.toast('Deleted', 'ok');
+        renderBookings();
+      }));
+    } catch (err) {
+      viewEl.innerHTML = `<div class="empty">Could not load bookings. ${App.escapeHtml(err.message)}</div>`;
+    }
+  }
+
   async function renderContacts() {
     const viewEl = document.getElementById('view');
     viewEl.innerHTML = '<div class="skeleton" style="height:60px"></div>';
@@ -374,6 +497,8 @@
       } catch (err) {
         viewEl.innerHTML = `<div class="empty">Could not load overview. ${App.escapeHtml(err.message)}</div>`;
       }
+    } else if (view === 'bookings') {
+      await renderBookings();
     } else if (view === 'contacts') {
       await renderContacts();
     } else if (view === 'subscribers') {

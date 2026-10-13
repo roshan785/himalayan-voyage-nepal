@@ -74,7 +74,7 @@ const writeHits = new Map();
 const WRITE_LIMIT = 40;          // requests
 const WRITE_WINDOW_MS = 60_000;  // per minute, per IP
 app.use((req, res, next) => {
-  const isWrite = req.method === 'POST' && /^\/api\/(contact|newsletter|auth\/login)/.test(req.path);
+  const isWrite = req.method === 'POST' && /^\/api\/(contact|newsletter|bookings|auth\/login)/.test(req.path);
   if (!isWrite) return next();
   const ip = req.ip || req.socket.remoteAddress || 'unknown';
   const now = Date.now();

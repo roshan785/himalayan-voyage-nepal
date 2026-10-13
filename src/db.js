@@ -92,6 +92,21 @@ CREATE TABLE IF NOT EXISTS contacts (
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+CREATE TABLE IF NOT EXISTS bookings (
+  id            INTEGER PRIMARY KEY AUTOINCREMENT,
+  package_id    INTEGER,
+  package_slug  TEXT NOT NULL DEFAULT '',
+  package_title TEXT NOT NULL DEFAULT '',
+  name          TEXT NOT NULL,
+  email         TEXT NOT NULL,
+  phone         TEXT NOT NULL DEFAULT '',
+  travellers    INTEGER NOT NULL DEFAULT 1,
+  travel_date   TEXT NOT NULL DEFAULT '',
+  message       TEXT NOT NULL DEFAULT '',
+  status        TEXT NOT NULL DEFAULT 'new',   -- new | confirmed | cancelled | done
+  created_at    TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 CREATE TABLE IF NOT EXISTS subscribers (
   id         INTEGER PRIMARY KEY AUTOINCREMENT,
   email      TEXT UNIQUE NOT NULL,
@@ -101,6 +116,7 @@ CREATE TABLE IF NOT EXISTS subscribers (
 CREATE INDEX IF NOT EXISTS idx_packages_category ON packages(category);
 CREATE INDEX IF NOT EXISTS idx_destinations_kind ON destinations(kind);
 CREATE INDEX IF NOT EXISTS idx_contacts_created ON contacts(created_at);
+CREATE INDEX IF NOT EXISTS idx_bookings_status ON bookings(status);
 `;
 
 db.exec(SCHEMA);

@@ -120,6 +120,24 @@ const App = (() => {
   }
 
   /** Pick a decorative cover modifier class from a record's text. */
+  /**
+   * Resolve an admin-entered image value to a real src.
+   *  - data:/http(s)/ absolute "/" values pass through unchanged
+   *  - "images/x.jpg" / "x.jpg" (a bare filename or path) becomes "/images/x.jpg"
+   *  - a known credit slug defers to photo()
+   * Returns '' when there is nothing usable.
+   */
+  function imgSrc(value) {
+    const v = String(value == null ? '' : value).trim();
+    if (!v) return '';
+    if (/^(data:|https?:|\/\/)/i.test(v)) return v;
+    if (v.startsWith('/')) return v;
+    if (v.includes('/')) return '/' + v.replace(/^\/+/, '');
+    const bySlug = photo(v);
+    if (bySlug) return bySlug.startsWith('/') ? bySlug : '/' + bySlug;
+    return '/images/' + v;
+  }
+
   function coverClass(text) {
     const t = String(text || '').toLowerCase();
     const has = (...words) => words.some((w) => t.includes(w));
@@ -194,8 +212,15 @@ const App = (() => {
    * Returns { cls, html } ready to drop inside `<div class="cover ${cls}">`.
    */
   function coverInner(record, { tag = '', label = '', resolvable = true, eager = true, desti = false, overlay = null } = {}) {
+    // An admin can set an explicit image (a URL, "/images/x.jpg" or a data URL).
+    // That must win over the auto-resolved credit slug, so a change made in the
+    // admin panel is what the frontend actually renders.
+    const explicit = record && typeof record === 'object'
+      ? String(record.image || record.cover || '').trim()
+      : '';
+    const isDirect = /^(data:|https?:|\/\/|\/)/i.test(explicit) || (explicit.includes('.') && explicit.includes('/'));
     const slug = resolvable ? resolveSlug(record) : (typeof record === 'string' ? record : null);
-    const src = slug ? photo(slug) : null;
+    const src = isDirect ? imgSrc(explicit) : (slug ? photo(slug) : null);
     const txt = label || (record && (record.name || record.title)) || '';
     const parts = [];
     if (src) {
@@ -469,7 +494,7 @@ const App = (() => {
   return {
     api, toast, escapeHtml, money, discountPrice, formatDate, stars, initials,
     coverClass, skeletonCards, showEmpty, starsHtml, ratingFor, countUp, wireToolbar,
-    creditsReady, photo, creditLine, coverInner, resolveSlug,
+    creditsReady, photo, creditLine, coverInner, resolveSlug, imgSrc,
     setupReveal, observeReveal, revealAll
   };
 })();

@@ -1229,3 +1229,69 @@ table.data td.wrap-cell { white-space: normal; min-width: 200px; }
   .logo-badge__abbr { font-size: .84rem; }
   .logo-badge__cap { font-size: .5rem; }
 }
+
+/* ── Admin: image field + preview ────────────────────────────────────────── */
+.img-field { display: grid; grid-template-columns: 1fr 132px; gap: 12px; align-items: start; }
+.img-field__main { display: grid; gap: 8px; }
+.img-upload { font-size: .84rem; color: var(--muted); }
+.img-preview { width: 132px; height: 92px; object-fit: cover; border-radius: 10px; border: 1px solid var(--line); background: var(--bg, #f4f7fb); display: block; }
+@media (max-width: 560px) { .img-field { grid-template-columns: 1fr; } .img-preview { width: 100%; height: 150px; } }
+
+/* Status badges used by the bookings table. */
+.badge--err { background: #fde8ec; color: #b3273f; }
+.badge--ok { background: #e6f6ec; color: #1f7a44; }
+.badge--off { background: #fff2d9; color: #92600a; }
+.badge { display: inline-block; padding: .2rem .55rem; border-radius: 999px; font-size: .74rem; font-weight: 700; text-transform: capitalize; }
+
+/* ── Frontend polish: refined cards, focus states, smoother motion ───────── */
+:root { --ring: 0 0 0 3px rgba(13, 110, 253, .35); }
+a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible {
+  outline: none; box-shadow: var(--ring); border-radius: 8px;
+}
+.card { transition: transform .2s var(--ease), box-shadow .2s var(--ease), border-color .2s var(--ease); }
+.card:hover { border-color: rgba(13, 42, 77, .16); box-shadow: 0 16px 40px rgba(15, 42, 82, .10); }
+.btn { transition: transform .16s var(--ease), box-shadow .16s var(--ease), background .16s var(--ease); }
+.btn:active { transform: translateY(1px); }
+.btn--primary { box-shadow: 0 8px 20px rgba(13, 42, 77, .18); }
+.btn--primary:hover { transform: translateY(-1px); box-shadow: 0 12px 26px rgba(13, 42, 77, .24); }
+
+/* Package detail: booking panel */
+.booking-panel { border: 1px solid var(--line); border-radius: 14px; background: #fff; padding: 20px; box-shadow: 0 14px 34px rgba(15, 42, 82, .08); }
+.booking-panel h3 { margin: 0 0 4px; }
+.booking-panel .price-row { display: flex; align-items: baseline; gap: 10px; margin: 6px 0 14px; }
+.booking-panel .price-row .now { font-size: 1.5rem; font-weight: 800; color: var(--ink); }
+.booking-panel .price-row .was { color: var(--muted); text-decoration: line-through; }
+.booking-panel .form { gap: 10px; }
+.booking-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+@media (max-width: 560px) { .booking-grid { grid-template-columns: 1fr; } }
+
+/* ── Admin console: mobile-friendly drawer nav + tap targets ─────────────── */
+.admin-side button { min-height: 42px; }
+.admin-main { min-width: 0; }
+.table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+
+@media (max-width: 900px) {
+  .admin-side {
+    position: sticky; top: 0; z-index: 40; padding: 12px 12px 10px;
+    display: flex; flex-direction: column; gap: 10px;
+  }
+  .admin-side h2 { margin: 0; font-size: .95rem; }
+  .admin-side nav {
+    grid-auto-flow: column; grid-auto-columns: max-content; gap: 6px;
+    overflow-x: auto; padding-bottom: 4px; scrollbar-width: thin;
+  }
+  .admin-side button { min-height: 40px; white-space: nowrap; padding: .5rem .8rem; }
+  .admin-side > div[style] { margin-top: 0 !important; display: flex; gap: 8px; }
+  .admin-side .btn { min-height: 40px; }
+  .admin-main { padding: 16px 14px 40px; }
+  .admin-top { position: sticky; top: 0; background: var(--bg, #f6f8fc); padding: 6px 0 10px; z-index: 5; }
+}
+
+/* Admin login page: comfortable targets + contained panel on phones. */
+#admin-login { min-height: 100vh; display: grid; place-items: center; padding: 20px; }
+.login-panel { width: 100%; max-width: 420px; }
+.login-panel a { display: inline-flex; align-items: center; min-height: 44px; padding: 4px 2px; }
+@media (max-width: 480px) {
+  .login-panel { padding: 18px; }
+  .login-panel .btn { min-height: 46px; }
+}

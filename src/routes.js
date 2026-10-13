@@ -131,6 +131,22 @@ function normalisePost(body) {
   };
 }
 
+/** Normalise a booking payload (admin edit). */
+function normaliseBooking(body) {
+  const status = ['new', 'confirmed', 'cancelled', 'done'].includes(body.status) ? body.status : 'new';
+  return {
+    package_slug: str(body.package_slug, 160),
+    package_title: str(body.package_title, 200),
+    name: str(body.name, 150),
+    email: str(body.email, 200),
+    phone: str(body.phone, 40),
+    travellers: Math.max(1, Math.min(50, Math.round(num(body.travellers, 1)))),
+    travel_date: str(body.travel_date, 40),
+    message: str(body.message, 4000),
+    status
+  };
+}
+
 /** Normalise a testimonial payload. */
 function normaliseTestimonial(body) {
   return {
@@ -299,6 +315,25 @@ function publicRouter() {
     res.status(201).json({ ok: true, id: info.lastInsertRowid });
   });
 
+  router.post('/bookings', (req, res) => {
+    const body = req.body || {};
+    const name = str(body.name, 150);
+    const email = str(body.email, 200);
+    if (!name) return bad(res, 'Your name is required');
+    if (!isEmail(email)) return bad(res, 'A valid email address is required');
+    const travellers = Math.max(1, Math.min(50, Math.round(num(body.travellers, 1))));
+    const slug = str(body.package_slug, 160);
+    const pkg = slug ? get('SELECT id, title, slug FROM packages WHERE slug = ?', [slug]) : null;
+    const info = run(
+      `INSERT INTO bookings
+        (package_id, package_slug, package_title, name, email, phone, travellers, travel_date, message)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [pkg ? pkg.id : null, slug, pkg ? pkg.title : str(body.package_title, 200),
+        name, email, str(body.phone, 40), travellers, str(body.travel_date, 40), str(body.message, 4000)]
+    );
+    res.status(201).json({ ok: true, id: info.lastInsertRowid });
+  });
+
   router.post('/newsletter', (req, res) => {
     const email = str((req.body || {}).email, 200);
     if (!isEmail(email)) return bad(res, 'A valid email address is required');
@@ -357,7 +392,9 @@ function adminRouter() {
         testimonials: get('SELECT COUNT(*) AS n FROM testimonials').n,
         contacts: get('SELECT COUNT(*) AS n FROM contacts').n,
         unreadContacts: get('SELECT COUNT(*) AS n FROM contacts WHERE handled = 0').n,
-        subscribers: get('SELECT COUNT(*) AS n FROM subscribers').n
+        subscribers: get('SELECT COUNT(*) AS n FROM subscribers').n,
+        bookings: get('SELECT COUNT(*) AS n FROM bookings').n,
+        newBookings: get("SELECT COUNT(*) AS n FROM bookings WHERE status = 'new'").n
       },
       recentContacts: all('SELECT id, name, email, subject, handled, created_at FROM contacts ORDER BY id DESC LIMIT 5')
     });
@@ -367,6 +404,8 @@ function adminRouter() {
   router.use('/destinations', crudRouter({ table: 'destinations', normalise: normaliseDestination }));
   router.use('/testimonials', crudRouter({ table: 'testimonials', normalise: normaliseTestimonial }));
   router.use('/posts', crudRouter({ table: 'blog_posts', normalise: normalisePost, orderBy: 'id DESC' }));
+
+  router.use('/bookings', crudRouter({ table: 'bookings', normalise: normaliseBooking, hasSlug: false }));
 
   // Contacts are read-only from the admin API except for the handled flag.
   router.get('/contacts', (_req, res) => {
