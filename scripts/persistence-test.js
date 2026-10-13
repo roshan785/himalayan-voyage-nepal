@@ -23,6 +23,23 @@ const os = require('os');
 const crypto = require('crypto');
 const { spawn } = require('node:child_process');
 
+// Load .env so DATABASE_URL/ADMIN_* can live there.
+require('../src/load-env').loadDotEnv();
+
+// HARD SAFETY GUARD — this test WRITES a booking and edits a package, so it must
+// never point at a real database. Same failure mode that let `node test.js` write
+// into production: the variable arrives from .env, not from the runner.
+const GUARD_DB_URL = process.env.DATABASE_URL || '';
+if (/^postgres(ql)?:\/\//i.test(GUARD_DB_URL)) {
+  const dbName = (() => { try { return new URL(GUARD_DB_URL).pathname.replace(/^\//, ''); } catch (_e) { return ''; } })();
+  if (!/(test|ci|sandbox|tmp|scratch|ephemeral)/i.test(dbName)) {
+    console.error('\n[REFUSED] Refusing to run the persistence test against "' + dbName + '".\n' +
+      'It writes real rows, so it must not touch a production database.\n' +
+      'Point DATABASE_URL at a test database (name containing test/ci/sandbox), or unset it for SQLite.');
+    process.exit(3);
+  }
+}
+
 const IS_PG = /^postgres(ql)?:\/\//i.test(process.env.DATABASE_URL || '');
 const marker = 'PERSIST-' + crypto.randomBytes(4).toString('hex');
 

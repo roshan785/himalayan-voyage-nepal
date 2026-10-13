@@ -43,6 +43,19 @@ const FORCE = process.argv.includes('--force');
 const TABLES = ['users', 'destinations', 'packages', 'testimonials',
   'blog_posts', 'contacts', 'subscribers', 'bookings'];
 
+// A real import writes to a remote database. Require an explicit opt-in so the
+// command can never run by accident (a stray `npm run migrate:pg` must not touch
+// production). --verify-only is read-only and never needs it.
+if (!VERIFY_ONLY && process.env.CONFIRM_MIGRATION !== 'yes') {
+  console.error(
+    'Refusing to run a real import.\n' +
+    '  This writes the SQLite data into the database in DATABASE_URL.\n' +
+    '  Re-run with:  CONFIRM_MIGRATION=yes npm run migrate:pg\n' +
+    '  (Read-only check first:  npm run migrate:verify)'
+  );
+  process.exit(2);
+}
+
 if (!process.env.DATABASE_URL) {
   console.error('DATABASE_URL is not set — refusing to run (this script only writes to PostgreSQL).');
   process.exit(2);
@@ -102,10 +115,26 @@ function fingerprint(rows, columns) {
 
     for (const table of TABLES) {
       const { rows, missing } = readTable(table);
-      const pgCount = Number((await client.query(`SELECT COUNT(*) AS n FROM ${table}`)).rows[0].n);
+
+      // An EMPTY target (a brand-new database) has no tables at all. Counting
+      // rows in a relation that does not exist raises 42P01, so detect it first:
+      // every table simply reads as 0 rows, which is the truth for "nothing
+      // there yet" and keeps the guard semantics below correct.
+      const targetHasTable = await client.query(
+        'SELECT 1 FROM information_schema.tables WHERE table_schema = current_schema() AND table_name = $1',
+        [table]
+      ).then((r) => r.rowCount > 0).catch(() => false);
+      const pgCount = targetHasTable
+        ? Number((await client.query(`SELECT COUNT(*) AS n FROM ${table}`)).rows[0].n)
+        : 0;
+      const targetNote = targetHasTable ? '' : ' (table absent)';
 
       if (missing) { report.push({ table, sqlite: 0, pg: pgCount, action: 'skipped (no such table locally)' }); continue; }
-      if (VERIFY_ONLY) { report.push({ table, sqlite: rows.length, pg: pgCount, action: pgCount === rows.length ? 'MATCH' : 'MISMATCH' }); continue; }
+      if (VERIFY_ONLY) {
+        const ok = pgCount === rows.length;
+        report.push({ table, sqlite: rows.length, pg: pgCount, action: (ok ? 'MATCH' : 'MISMATCH') + targetNote });
+        continue;
+      }
       if (rows.length === 0) { report.push({ table, sqlite: 0, pg: pgCount, action: 'skipped (empty)' }); continue; }
       if (pgCount === rows.length && !FORCE) { report.push({ table, sqlite: rows.length, pg: pgCount, action: 'skipped (already migrated)' }); continue; }
 

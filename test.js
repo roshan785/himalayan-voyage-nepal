@@ -24,6 +24,37 @@ const TMP_DB = path.join(os.tmpdir(), `hv-test-${Date.now()}.db`);
 const TEST_ADMIN_EMAIL = 'admin' + '@test.local';
 const TEST_ADMIN_PASSWORD = randomSecret();
 
+// HARD SAFETY GUARD — this suite DESTROYS data (it truncates and rewrites
+// tables). It must only ever point at a throwaway database.
+//
+// Two real incidents made this necessary:
+//   1. `node test.js` picked up a production DATABASE_URL from .env and wrote
+//      test rows into the live database (the env var is not set by the runner,
+//      so the isolation below could not see it).
+//   2. The same happens for any PG database that is not clearly a test one.
+//
+// Rules: load .env exactly like the app does, then refuse unless the target is
+// a temp SQLite file or the database name says it is a test database.
+(function loadEnvForGuard() {
+  try { require('./src/load-env').loadDotEnv(); } catch (_e) { /* optional */ }
+})();
+
+const GUARD_DB_URL = process.env.DATABASE_URL || '';
+if (/^postgres(ql)?:\/\//i.test(GUARD_DB_URL)) {
+  const dbName = (() => { try { return new URL(GUARD_DB_URL).pathname.replace(/^\//, ''); } catch (_e) { return ''; } })();
+  if (!/(test|ci|sandbox|tmp|scratch|ephemeral)/i.test(dbName)) {
+    console.error(
+      '\n[REFUSED] Refusing to run the test suite against "' + dbName + '".\n' +
+      'This suite DELETES and RE-CREATES data, so it must never point at a real database.\n\n' +
+      'Use one of:\n' +
+      '  • leave DATABASE_URL unset (SQLite temp file — the default)\n' +
+      '  • point it at a database whose NAME contains test/ci/sandbox, e.g.\n' +
+      '      DATABASE_URL=postgresql://user@host/hvtest_suite\n'
+    );
+    process.exit(3);
+  }
+}
+
 // Isolation. SQLite: a private temp file. PostgreSQL: a private SCHEMA inside the
 // given database. Without this a re-run would find a previous run's admin row
 // (whose password is random per run) and login would 401 — the suite must be
