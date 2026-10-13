@@ -340,7 +340,12 @@ const App = (() => {
     if (!backdrop && nav) {
       backdrop = document.createElement('div');
       backdrop.className = 'nav-backdrop';
-      document.body.appendChild(backdrop);
+      // The backdrop MUST live inside .site-header. That element is
+      // `position:sticky; z-index:60`, so it is its own stacking context:
+      // a body-level backdrop (z-index 55) would paint ABOVE the in-header nav
+      // drawer and swallow every tap ("Home click does nothing" on mobile).
+      const host = nav.closest('.site-header') || document.body;
+      host.appendChild(backdrop);
     }
     function close() {
       if (nav) nav.classList.remove('is-open');

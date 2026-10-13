@@ -168,11 +168,24 @@
         </div>
         <div class="logo-row" aria-label="Affiliations">
           <span class="logo-row__label">Affiliated With:</span>
-          <a class="logo-badge" href="https://www.iata.org/" target="_blank" rel="noopener noreferrer" title="IATA">IATA</a>
-          <a class="logo-badge" href="https://ntb.gov.np/" target="_blank" rel="noopener noreferrer" title="Nepal Tourism Board">NTB</a>
-          <a class="logo-badge" href="https://natta.org.np/" target="_blank" rel="noopener noreferrer" title="NATTA">NATTA</a>
-          <a class="logo-badge" href="https://nepal.gov.np/" target="_blank" rel="noopener noreferrer" title="Government of Nepal">Govt. of Nepal</a>
-          <a class="logo-badge" href="https://www.iso.org/home.html" target="_blank" rel="noopener noreferrer" title="ISO">ISO</a>
+          <a class="logo-badge" href="https://www.iso.org/" target="_blank" rel="noopener noreferrer" aria-label="ISO certified" title="ISO certified">
+            <span class="logo-badge__abbr">ISO</span><span class="logo-badge__cap">Certified</span>
+          </a>
+          <a class="logo-badge" href="https://ntb.gov.np/" target="_blank" rel="noopener noreferrer" aria-label="Nepal Tourism Board" title="Nepal Tourism Board">
+            <span class="logo-badge__abbr">NTB</span><span class="logo-badge__cap">Nepal Tourism</span>
+          </a>
+          <a class="logo-badge" href="https://natta.org.np/" target="_blank" rel="noopener noreferrer" aria-label="NATTA" title="Nepal Association of Tour &amp; Travel Agents">
+            <span class="logo-badge__abbr">NATTA</span><span class="logo-badge__cap">Tour &amp; Travel</span>
+          </a>
+          <a class="logo-badge" href="https://www.iata.org/" target="_blank" rel="noopener noreferrer" aria-label="IATA" title="International Air Transport Association">
+            <span class="logo-badge__abbr">IATA</span><span class="logo-badge__cap">Air Transport</span>
+          </a>
+          <a class="logo-badge" href="https://www.nrb.org.np/" target="_blank" rel="noopener noreferrer" aria-label="Nepal Rastra Bank" title="Nepal Rastra Bank (central bank)">
+            <span class="logo-badge__abbr">NRB</span><span class="logo-badge__cap">Nepal Rastra Bank</span>
+          </a>
+          <a class="logo-badge" href="https://nepal.gov.np/" target="_blank" rel="noopener noreferrer" aria-label="Government of Nepal" title="Government of Nepal">
+            <span class="logo-badge__abbr">GoN</span><span class="logo-badge__cap">Govt. of Nepal</span>
+          </a>
         </div>
         <div class="footer-bottom">
           <span>&copy; <span data-year>2026</span> Himalayan Voyage Nepal. All rights reserved.</span>
