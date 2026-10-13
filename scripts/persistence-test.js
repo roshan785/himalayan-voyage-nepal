@@ -130,9 +130,14 @@ async function j(method, url, body, token) {
   if (booking.status !== 201) throw new Error('booking create failed: ' + booking.status);
 
   const edit = await j('PUT', base1 + `/api/admin/packages/${first.id}`, {
+    // Send EVERY mutable field. Omitting one makes the API normalise it to a
+    // default, which once wiped `image` and left price=77777 on a real row when
+    // this script accidentally ran against production. The restoration call
+    // below uses the same complete body.
     title: first.title, category: first.category, destination: first.destination,
     days: first.days, nights: first.nights, price: newPrice, discount: first.discount,
-    summary: first.summary || 'x', highlights: first.highlights || [], featured: first.featured
+    image: first.image || '', summary: first.summary || 'x',
+    highlights: first.highlights || [], featured: first.featured
   }, token);
   if (edit.status !== 200) throw new Error('package edit failed: ' + edit.status);
 
@@ -156,11 +161,13 @@ async function j(method, url, body, token) {
   const bookings2 = await j('GET', base2 + '/api/admin/bookings', null, login2.data ? login2.data.token : null);
   const found = (bookings2.data.items || []).find((x) => x.name === marker);
 
-  // Tidy up the edited price so repeated runs do not drift.
+  // Tidy up the edited price so repeated runs do not drift. Same complete body,
+  // so the row is restored EXACTLY (including image).
   await j('PUT', base2 + `/api/admin/packages/${first.id}`, {
     title: first.title, category: first.category, destination: first.destination,
     days: first.days, nights: first.nights, price: first.price, discount: first.discount,
-    summary: first.summary || 'x', highlights: first.highlights || [], featured: first.featured
+    image: first.image || '', summary: first.summary || 'x',
+    highlights: first.highlights || [], featured: first.featured
   }, login2.data ? login2.data.token : null);
 
   b.child.kill('SIGTERM');
