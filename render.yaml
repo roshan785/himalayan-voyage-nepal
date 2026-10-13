@@ -1,0 +1,28 @@
+# Render Blueprint for Himalayan Voyage Nepal.
+#
+# The service was originally created in the dashboard; this file documents the
+# required production configuration and can be used to rebuild the service.
+# Secrets are NOT stored here — `sync: false` makes Render prompt for them.
+services:
+  - type: web
+    name: himalayan-voyage-nepal
+    runtime: node
+    plan: free
+    branch: master
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_VERSION
+        value: "22.22.1"
+      # Persistent storage. Without it the app falls back to SQLite and data is
+      # lost on every redeploy (health reports dbPersistent:false).
+      - key: DATABASE_URL
+        sync: false
+      # Signs admin JWTs. Must be a long random string in production.
+      - key: JWT_SECRET
+        sync: false
+      - key: ADMIN_EMAIL
+        value: admin@himalayanvoyage.test
+      - key: ADMIN_PASSWORD
+        sync: false
