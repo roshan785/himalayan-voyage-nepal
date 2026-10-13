@@ -28,19 +28,13 @@ services:
       - key: NODE_VERSION
         value: "22.22.1"
 
-      # Persistent storage. Without DATABASE_URL the app falls back to SQLite,
-      # which does not survive a redeploy on the free plan - /api/health then
-      # reports dbPersistent:false.
-      - key: DATABASE_URL
-        sync: false
-
-      # Signs admin JWTs. Must be a long random string in production.
-      - key: JWT_SECRET
-        sync: false
-
-      # Credentials for the FIRST admin only - ensureAdmin() seeds the account
-      # when the users table is empty and never overwrites an existing one.
+      # NOTE: DATABASE_URL, JWT_SECRET and ADMIN_PASSWORD are intentionally NOT
+      # declared here. Render treats a Blueprint entry as authoritative and
+      # overwrites the dashboard value, which left process.env.DATABASE_URL
+      # empty at runtime (health reported db:"sqlite" even though the variable
+      # was set). Secrets therefore live only in the dashboard.
+      #
+      # Set these three in Render -> Environment:
+      #   DATABASE_URL, JWT_SECRET, ADMIN_PASSWORD
       - key: ADMIN_EMAIL
         value: admin@himalayanvoyage.test
-      - key: ADMIN_PASSWORD
-        sync: false
