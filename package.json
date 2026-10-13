@@ -22,7 +22,16 @@
     "migrate:apply": "CONFIRM_MIGRATION=yes node scripts/sqlite-to-pg.js",
     "backup": "node scripts/backup-db.js",
     "uptime": "node scripts/uptime-check.js",
-    "uptime:watch": "node scripts/uptime-check.js --watch"
+    "uptime:watch": "node scripts/uptime-check.js --watch",
+    "lint": "npx eslint server.js src/ scripts/backup-db.js scripts/uptime-check.js scripts/secret-scan.js scripts/deploy-verify.js scripts/ops-status.js scripts/backup-schedule.js scripts/rollback.js",
+    "secret-scan": "node scripts/secret-scan.js",
+    "secret-scan:staged": "node scripts/secret-scan.js --staged",
+    "deploy:verify": "node scripts/deploy-verify.js",
+    "ops": "node scripts/ops-status.js",
+    "backup:schedule": "node scripts/backup-schedule.js",
+    "backup:restore-test": "node scripts/backup-schedule.js --restore-test",
+    "rollback": "node scripts/rollback.js",
+    "ci": "npm run lint && npm run secret-scan && npm test"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",

@@ -16,6 +16,7 @@ const { all, get, run, slugify, driver } = require('./db');
 const {
   verifyPassword, issueToken, requireAuth, findUserByEmail, TOKEN_COOKIE
 } = require('./auth');
+const { notifyBooking } = require('./notify');
 
 const SITE = {
   name: 'Himalayan Voyage Nepal',
@@ -306,7 +307,10 @@ function publicRouter() {
         keysHoldingPostgresUrl,
         envSource: process.env.OPENOS_ENV_SOURCE || null
       },
-      env: envPresence
+      env: envPresence,
+      // Booking notifications are optional; report whether they are wired up so
+      // an operator can see at a glance (never reveals secret values).
+      notifications: require('./notify').status()
     });
   });
 
@@ -407,6 +411,15 @@ function publicRouter() {
       [pkg ? pkg.id : null, slug, pkg ? pkg.title : str(body.package_title, 200),
         name, email, str(body.phone, 40), travellers, str(body.travel_date, 40), str(body.message, 4000)]
     );
+    // Notify the admin (best-effort; never blocks or fails the booking).
+    const notified = await notifyBooking(Object.assign({ id: info.lastInsertRowid }, {
+      package_title: pkg ? pkg.title : str(body.package_title, 200),
+      name, email, phone: str(body.phone, 40), travellers, travel_date: str(body.travel_date, 40),
+      message: str(body.message, 4000)
+    }));
+    if (!notified.sent && notified.reason && notified.reason !== 'not-configured') {
+      console.warn('[booking] notification not sent:', notified.reason);
+    }
     res.status(201).json({ ok: true, id: info.lastInsertRowid });
   });
 

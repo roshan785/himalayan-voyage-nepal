@@ -9,3 +9,6 @@ secrets/
 .deploy-tools/
 .audit-tools/
 .audit2/
+.github-secrets/
+*.log
+ops-report.json
