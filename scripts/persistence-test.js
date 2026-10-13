@@ -14,6 +14,9 @@
  * proven end to end rather than asserted.
  */
 
+// Load .env first so DATABASE_URL/ADMIN_* can live there.
+require('../src/load-env').loadDotEnv();
+
 const path = require('path');
 const fs = require('fs');
 const os = require('os');

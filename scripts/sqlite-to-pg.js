@@ -23,6 +23,9 @@
  * Requires DATABASE_URL to point at the PostgreSQL database.
  */
 
+// Load .env first so DATABASE_URL can live there instead of only in the shell.
+require('../src/load-env').loadDotEnv();
+
 const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');

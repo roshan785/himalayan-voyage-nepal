@@ -14,6 +14,9 @@
  * written to the database.
  */
 
+// Load .env first so DATABASE_URL/ADMIN_EMAIL can live there.
+require('../src/load-env').loadDotEnv();
+
 const { hashPassword, findUserByEmail, createUser } = require('../src/auth');
 const { run, get, DB_PATH, DATABASE_URL, IS_PG } = require('../src/db');
 

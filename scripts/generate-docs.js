@@ -17,6 +17,7 @@ const path = require('path');
 const PDFDocument = require('pdfkit');
 
 const OUT_DIR = path.join(__dirname, '..', 'public', 'docs');
+require('../src/load-env').loadDotEnv();
 const { all } = require('../src/db');
 
 fs.mkdirSync(OUT_DIR, { recursive: true });
