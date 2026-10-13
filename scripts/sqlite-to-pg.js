@@ -80,12 +80,17 @@ function fingerprint(rows, columns) {
 (async () => {
   const pool = new pg.Pool({
     connectionString: process.env.DATABASE_URL,
-    ssl: /sslmode=disable/i.test(process.env.DATABASE_URL) ? false : { rejectUnauthorized: false }
+    ssl: /sslmode=disable/i.test(process.env.DATABASE_URL) ? false : { rejectUnauthorized: false },
+    // Fail fast with a clear error instead of hanging when the host is wrong.
+    connectionTimeoutMillis: 15000
   });
-  const client = await pool.connect();
+  // `connect()` must be INSIDE the try: a bad host/password rejects here, and
+  // that is exactly the failure we want to explain in plain language.
+  let client = null;
   const report = [];
 
   try {
+    client = await pool.connect();
     // Ensure the target schema exists — but ONLY for a real import.
     // In --verify-only mode we must not write anything at all, otherwise the
     // "read-only" check silently creates tables on the target (harmless for
@@ -190,11 +195,24 @@ function fingerprint(rows, columns) {
       : 'RESULT: ❌ verification found differences — do NOT cut over.'));
     process.exitCode = allMatch ? 0 : 1;
   } catch (err) {
-    console.error('\n[error] migration failed:', err.message);
+    // A bad host / wrong password / no network should read as one clear line,
+    // not a raw driver dump (the pooled client rejects with a rich object).
+    const msg = err && err.message ? err.message : String(err);
+    const code = err && err.code ? ` [${err.code}]` : '';
+    console.error('\n[error] could not use the database: ' + msg + code);
+    if (/ENOTFOUND|EAI_AGAIN/.test(msg)) {
+      console.error('  The host in DATABASE_URL could not be resolved — check the connection string.');
+    } else if (/password authentication|28P01/.test(msg)) {
+      console.error('  The password in DATABASE_URL was rejected — copy the string again from Neon.');
+    } else if (/timeout|ETIMEDOUT|ECONNREFUSED/.test(msg)) {
+      console.error('  Could not reach the host. Check the network, or that the Neon project is awake.');
+    } else if (/self.signed|certificate/i.test(msg)) {
+      console.error('  TLS certificate problem — keep ?sslmode=require in the connection string.');
+    }
     try { await client.query('ROLLBACK'); } catch (_e) { /* ignore */ }
     process.exitCode = 1;
   } finally {
-    client.release();
+    try { if (client) client.release(); } catch (_e) { /* best effort */ }
     await pool.end();
     try { sqlite.close(); } catch (_e) { /* ignore */ }
   }

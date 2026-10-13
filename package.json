@@ -17,7 +17,8 @@
     "migrate:pg": "node scripts/sqlite-to-pg.js",
     "migrate:verify": "node scripts/sqlite-to-pg.js --verify-only",
     "test:persist": "node scripts/persistence-test.js",
-    "db:migrate": "node -e \"require('./src/db').init().then(k=>console.log('schema ready on',k))\""
+    "db:migrate": "node -e \"require('./src/db').init().then(k=>console.log('schema ready on',k))\"",
+    "db:set-url": "node scripts/set-db-url.js"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",
