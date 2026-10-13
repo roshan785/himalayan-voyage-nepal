@@ -1139,37 +1139,43 @@ table.data td.wrap-cell { white-space: normal; min-width: 200px; }
   .play-btn { animation: none; }
 }
 
-/* ── Destination detail page (reference parity) ─────────────────────────── */
-.detail-layout { align-items: start; }
-.detail-hero { aspect-ratio: 21/9; border-radius: 14px; overflow: hidden; margin-bottom: 18px; }
-.detail-title { margin: 0 0 8px; font-size: clamp(1.6rem, 2.4vw + 1rem, 2.6rem); line-height: 1.15; }
-.detail-lead { font-size: 1.03rem; color: var(--body); margin: 14px 0 22px; }
+/* ── Destination detail page (reference parity: 8/4 grid) ───────────────── */
+.detail-grid { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 34px; align-items: start; }
+.detail-main { min-width: 0; }
+.detail-side { min-width: 0; }
+.detail-hero { aspect-ratio: 21/9; border-radius: 14px; overflow: hidden; margin-bottom: 20px; }
+.detail-title { margin: 0 0 10px; font-size: clamp(1.6rem, 2.2vw + 1rem, 2.4rem); line-height: 1.15; }
+.detail-lead { font-size: 1.03rem; color: var(--body); margin: 0 0 24px; line-height: 1.7; }
+
+/* Overview facts box — label / value rows, exactly like the reference. */
 .overview-box {
   border: 1px solid var(--line); border-radius: 14px; overflow: hidden; background: #fff;
-  box-shadow: 0 10px 30px rgba(15, 42, 82, .06); margin: 6px 0 26px;
+  box-shadow: 0 10px 30px rgba(15, 42, 82, .06); margin: 0 0 24px;
 }
-.overview-box h4 { margin: 0; padding: 14px 20px; background: var(--navy, #0d2a4d); color: #fff; font-size: 1rem; letter-spacing: .02em; }
-.overview-item { display: grid; grid-template-columns: minmax(150px, 240px) 1fr; border-top: 1px solid var(--line); }
+.overview-box h4 { margin: 0; padding: 14px 20px; background: #0d2a4d; color: #fff; font-size: 1rem; letter-spacing: .02em; }
+.overview-item { display: grid; grid-template-columns: minmax(150px, 230px) 1fr; border-top: 1px solid var(--line); }
 .overview-item:first-of-type { border-top: 0; }
 .overview-label { padding: 12px 20px; font-weight: 600; color: var(--ink); background: #f4f7fb; }
 .overview-value { padding: 12px 20px; color: var(--body); }
-.recent-title { margin: 6px 0 14px; font-size: 1.15rem; }
-.recent-list { display: grid; gap: 12px; }
-.recent-item { display: grid; grid-template-columns: 96px 1fr; gap: 14px; align-items: center; padding: 10px; border: 1px solid var(--line); border-radius: 12px; text-decoration: none; background: #fff; transition: transform .18s var(--ease), box-shadow .18s var(--ease); }
-.recent-item:hover { transform: translateY(-2px); box-shadow: 0 12px 26px rgba(15, 42, 82, .1); }
-.recent-item__cover { width: 96px; height: 72px; display: block; position: relative; overflow: hidden; }
-.recent-item__cover img { width: 100%; height: 100%; object-fit: cover; }
-.recent-item__date { display: block; font-size: .76rem; color: var(--muted); margin-bottom: 3px; }
-.recent-item__name { display: block; color: var(--ink); font-weight: 600; font-size: .95rem; line-height: 1.25; }
 
-@media (max-width: 720px) {
+/* Sidebar panel: "Explore Recent Tour Packages". */
+.side-panel { border: 1px solid var(--line); border-radius: 14px; overflow: hidden; background: #fff; box-shadow: 0 10px 30px rgba(15, 42, 82, .06); }
+.side-panel__head { margin: 0; padding: 14px 18px; background: #0d2a4d; color: #fff; font-size: 1rem; }
+.side-panel__body { padding: 8px 18px 14px; }
+.recent-item { padding: 12px 0; border-bottom: 1px dashed var(--line); }
+.recent-item:last-child { border-bottom: 0; }
+.recent-item__date { font-size: .78rem; color: #d6336c; font-weight: 600; margin-bottom: 3px; }
+.recent-item__name { margin: 0; font-size: .96rem; line-height: 1.3; }
+.recent-item__name a { color: var(--ink); text-decoration: none; }
+.recent-item__name a:hover { color: #0d6efd; }
+
+@media (max-width: 900px) {
+  .detail-grid { grid-template-columns: 1fr; gap: 24px; }
   .detail-hero { aspect-ratio: 16/10; }
+}
+@media (max-width: 560px) {
+  .detail-hero { aspect-ratio: 3/2; }
   .overview-item { grid-template-columns: 1fr; }
   .overview-label { padding: 10px 16px 2px; background: transparent; }
   .overview-value { padding: 2px 16px 12px; }
-  .recent-item { grid-template-columns: 72px 1fr; gap: 12px; }
-  .recent-item__cover { width: 72px; height: 58px; }
-}
-@media (max-width: 420px) {
-  .detail-hero { aspect-ratio: 3/2; }
 }

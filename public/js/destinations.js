@@ -76,6 +76,13 @@
    * (Country/Capital/Currency/Language/Best time/Visa), the long description,
    * and a sidebar listing recent tour packages that visit the destination.
    */
+  /**
+   * Single-destination view. Layout mirrors the reference site's "Destination
+   * Details" page exactly: a two-column grid (content 8 / sidebar 4) where the
+   * left column holds the cover, long description and the Overview facts box,
+   * the right sidebar lists "Explore Recent Tour Packages", and a full-width
+   * CTA band sits below with a "Let's talk" button.
+   */
   async function loadDetail(slug) {
     const box = document.getElementById('dest-detail');
     const grid = document.getElementById('dest-grid');
@@ -85,9 +92,8 @@
     if (!box) return;
     try {
       const dest = (await App.api('/api/destinations/' + encodeURIComponent(slug))).item;
-      // The reference site's "Explore Recent Tour Packages" lists the site's
-      // most recent packages (not destination-filtered).
-      const pkgs = (await App.api('/api/packages')).items;
+      // The reference sidebar lists the site's most recent packages (3 shown).
+      const pkgs = (await App.api('/api/packages')).items.slice(0, 3);
 
       // Switch the page chrome into "detail" mode.
       box.classList.remove('hidden');
@@ -98,11 +104,10 @@
       const listingHead = document.getElementById('dest-listing-head');
       if (listingHead) listingHead.classList.add('hidden');
 
-      // Update the breadcrumb + document title so the page reads as a detail page.
       const crumb = document.getElementById('dest-crumb');
       if (crumb) {
         crumb.innerHTML = '<a href="index.html">Home</a> / <a href="destinations.html">Destinations</a> / ' +
-          App.escapeHtml(dest.name);
+          '<span class="active">Destination Details</span>';
       }
       document.title = dest.name + ' | Himalayan Voyage Nepal';
 
@@ -123,54 +128,28 @@
           ).join('') + '</div>'
         : '';
 
-      const pkgCards = pkgs.length
-        ? '<h3 class="recent-title">Explore Recent Tour Packages</h3><div class="recent-list">' +
-          pkgs.slice(0, 4).map((p) => {
-            const c = App.coverInner(p, { overlay: { label: 'Read More', href: 'packages.html?slug=' + encodeURIComponent(p.slug) } });
-            return '<a class="recent-item" href="packages.html?slug=' + encodeURIComponent(p.slug) + '">' +
-              '<span class="recent-item__cover ' + c.cls + '" style="border-radius:10px">' + c.html + '</span>' +
-              '<span class="recent-item__body"><span class="recent-item__date">' + App.formatDate(p.created_at) + '</span>' +
-              '<span class="recent-item__name">' + App.escapeHtml(p.title) + '</span></span></a>';
-          }).join('') + '</div>'
-        : '<p class="muted">No packages reference this destination yet &mdash; ' +
-          '<a href="contact.html">ask us for a custom itinerary</a>.</p>';
+      const recent = pkgs.length
+        ? pkgs.map((p) =>
+            '<article class="recent-item"><div class="recent-item__date">' +
+            App.escapeHtml(App.formatDate(p.created_at)) + '</div>' +
+            '<h5 class="recent-item__name"><a href="packages.html?slug=' +
+            encodeURIComponent(p.slug) + '">' + App.escapeHtml(p.title) + '</a></h5></article>'
+          ).join('')
+        : '<p class="muted small">No packages yet.</p>';
 
       box.innerHTML = `
-        <nav class="breadcrumbs" aria-label="Breadcrumb"><a href="index.html">Home</a> / <a href="destinations.html">Destinations</a> / ${App.escapeHtml(dest.name)}</nav>
-        <div class="layout-side detail-layout">
-          <article>
-            <div class="detail-hero cover ${cov.cls}">
-              ${cov.html}
-            </div>
+        <div class="detail-grid">
+          <div class="detail-main">
+            <div class="detail-hero cover ${cov.cls}">${cov.html}</div>
             <h1 class="detail-title">${App.escapeHtml(dest.name)}</h1>
-            <div class="meta-row">
-              <span>${App.escapeHtml(dest.region || '')}</span>
-              <span class="badge">${dest.kind === 'international' ? 'International' : 'Nepal'}</span>
-            </div>
             <p class="detail-lead">${App.escapeHtml(dest.description)}</p>
             ${overview}
-            <div class="recent-wrap">${pkgCards}</div>
-            <div style="margin-top:18px"><a class="btn btn--ghost btn--sm" href="destinations.html">&larr; All destinations</a></div>
-          </article>
-          <aside class="detail-aside">
-            <div class="side-card">
-              <h3>Plan this trip</h3>
-              <p class="small muted" style="margin:0 0 12px">Tell us your dates and we&rsquo;ll build an itinerary around this destination.</p>
-              <a class="btn btn--primary btn--sm" href="contact.html">Enquire Now</a>
-            </div>
-            <div class="side-card">
-              <h3>Popular right now</h3>
-              <ul class="side-list">
-                <li><a href="destinations.html?slug=mustang"><span>Mustang</span><span class="n">Nepal</span></a></li>
-                <li><a href="destinations.html?slug=pokhara"><span>Pokhara</span><span class="n">Nepal</span></a></li>
-                <li><a href="destinations.html?slug=rara-lake"><span>Rara Lake</span><span class="n">Karnali</span></a></li>
-                <li><a href="destinations.html?slug=bangkok"><span>Bangkok</span><span class="n">Thailand</span></a></li>
-              </ul>
-            </div>
-            <div class="side-card">
-              <h3>Need a visa?</h3>
-              <p class="small muted" style="margin:0 0 10px">Checklists and assistance for 12 destination countries.</p>
-              <a class="btn btn--ghost btn--sm" href="visa.html">Visa Services &rarr;</a>
+            <div style="margin-top:12px"><a class="btn btn--ghost btn--sm" href="destinations.html">&larr; All destinations</a></div>
+          </div>
+          <aside class="detail-side">
+            <div class="side-panel">
+              <h4 class="side-panel__head">Explore Recent Tour Packages</h4>
+              <div class="side-panel__body">${recent}</div>
             </div>
           </aside>
         </div>`;
