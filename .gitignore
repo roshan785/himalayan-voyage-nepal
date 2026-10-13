@@ -5,3 +5,4 @@ data/
 mobile-audit/
 .DS_Store
 backups/
+secrets/

@@ -145,3 +145,51 @@ checked against a modified target to confirm the rows were untouched.
 3. Run `npm run migrate:verify` first — it reports MATCH/MISMATCH for every
    table without writing anything.
 4. Only then run `npm run migrate:pg`.
+
+---
+
+## Neon production cutover (completed 2026-10-13)
+
+Target: Neon PostgreSQL 18.6, pooled connection, database `neondb`.
+Stored in `.env` as `DATABASE_URL` (mode 600, gitignored, never committed).
+
+Verified byte-for-byte against the source `data/travel.db`
+(sha256 `a856e71fc7d56949…`, `PRAGMA integrity_check` = ok):
+
+| table | rows | | table | rows |
+|---|---|---|---|---|
+| users | 1 | | blog_posts | 3 |
+| destinations | 12 | | contacts | 0 |
+| packages | 8 | | subscribers | 0 |
+| testimonials | 3 | | bookings | 2 |
+
+Password hashes, package `price`/`image` and both booking records match the
+source exactly; sequences were reset to `max(id)` so new inserts cannot collide.
+
+### Connecting the deployed app
+
+The running app picks up PostgreSQL automatically when `DATABASE_URL` is set —
+no code change is needed. `GET /api/health` reports `db: "postgres"` and
+`dbPersistent: true` in that case.
+
+### Rotating a leaked secret
+
+If a connection string or password has ever been pasted into a chat, ticket or
+log, rotate it at the provider and store the new value with:
+
+```bash
+npm run db:set-url        # reads the new string from the clipboard
+```
+
+Then re-verify with `npm run migrate:verify` (read-only) and confirm
+`/api/health` still reports `db: "postgres"`.
+
+### Admin recovery
+
+`ensureAdmin()` only seeds the FIRST admin, so it can never reset an existing
+password. Use the CLI instead — it reads the password from argv, writes only the
+bcrypt hash, and prints nothing sensitive:
+
+```bash
+npm run admin:pass -- '<new-password>' admin@himalayanvoyage.test
+```

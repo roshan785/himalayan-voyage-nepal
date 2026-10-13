@@ -118,6 +118,19 @@ function mask(value) {
     }
   } catch (_e) { /* not tracked — this is what we want */ }
 
+  // Before writing, warn (without failing) if .env already contains this exact
+  // connection string — the usual sign that a secret pasted into a chat or log
+  // should be rotated at the provider before it is trusted here.
+  try {
+    const cur = fs.existsSync(ENV_PATH) ? fs.readFileSync(ENV_PATH, 'utf8') : '';
+    const m = cur.match(/^\s*DATABASE_URL\s*=\s*(.+)$/m);
+    if (m && m[1].trim() === secret) {
+      console.error('note: this is the same DATABASE_URL that is already in .env.');
+      console.error('      if that value was ever pasted into a chat, ticket or log, rotate it at');
+      console.error('      the provider first, then re-run so the new secret is stored here.');
+    }
+  } catch (_e) { /* best effort */ }
+
   const original = fs.existsSync(ENV_PATH) ? fs.readFileSync(ENV_PATH, 'utf8') : '';
   fs.writeFileSync(ENV_PATH + '.bak_seturl_' + Date.now(), original, { mode: 0o600 });
 

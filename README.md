@@ -230,3 +230,18 @@ travel-nepal/
 
 Original work. Provided as-is for demonstration and as a starting point for a
 real agency site.
+
+## Production database (PostgreSQL)
+
+Set `DATABASE_URL` and the app switches from SQLite to PostgreSQL automatically —
+no code change. Verify with:
+
+```bash
+curl -s /api/health   # -> {"db":"postgres","dbPersistent":true}
+```
+
+Cutover, verification and secret-rotation steps: see
+[DATABASE-MIGRATION.md](DATABASE-MIGRATION.md).
+
+> The test suite refuses to run against a database whose name does not contain
+> `test`/`ci`/`sandbox` — it deletes and re-creates data, so production is safe.
