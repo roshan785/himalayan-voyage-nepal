@@ -78,15 +78,7 @@ jobs:
           })();
           "
 
-      # NOTE: cloud-side BACKUP monitoring requires a DATABASE_URL repo secret
-      # (not available) — backups run locally / on your host, see docs/DEVOPS.md.
-      # When wired, the job below proves a dump is reachable and non-empty.
-      - name: Backup checks (skipped unless DATABASE_URL secret is set)
-        if: ${{ secrets.DATABASE_URL != '' }}
-        env:
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
-        run: |
-          node -e "
-          require('child_process').execFileSync('node',['scripts/backup-db.js'],{stdio:'inherit'});
-          " || echo "::warning::backup step failed"
+      # NOTE: cloud-side BACKUP monitoring needs a DATABASE_URL repo secret and a
+      # place to store the dump — neither is available here (backups run locally /
+      # on your host; see docs/DEVOPS.md §3). Deliberately not faked.
 
