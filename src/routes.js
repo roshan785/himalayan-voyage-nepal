@@ -240,6 +240,13 @@ function publicRouter() {
     for (const key of ['DATABASE_URL', 'JWT_SECRET', 'ADMIN_EMAIL', 'ADMIN_PASSWORD']) {
       envPresence[key] = (process.env[key] || '').length > 0;
     }
+    // Diagnose a variable that was set under a slightly different KEY NAME (a
+    // trailing space, different case) or stored under another name entirely.
+    // Only names are reported — never a value.
+    const dbKeyNames = Object.keys(process.env)
+      .filter((k) => k.trim().toUpperCase() === 'DATABASE_URL');
+    const keysHoldingPostgresUrl = Object.keys(process.env)
+      .filter((k) => /^postgres(ql)?:\/\//i.test((process.env[k] || '').trim()));
     res.json({
       ok: true,
       service: 'himalayan-voyage',
@@ -253,7 +260,10 @@ function publicRouter() {
         isPostgres: /^postgres(ql)?:\/\//i.test(rawUrl.trim()),
         fingerprint: rawUrl
           ? require('crypto').createHash('sha256').update(rawUrl).digest('hex').slice(0, 8)
-          : null
+          : null,
+        exactKeyPresent: Object.prototype.hasOwnProperty.call(process.env, 'DATABASE_URL'),
+        matchingKeyNames: dbKeyNames,
+        keysHoldingPostgresUrl
       },
       env: envPresence
     });
