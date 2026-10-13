@@ -1,16 +1,10 @@
 # Himalayan Voyage Nepal — Travel Agency Website
 
 A complete travel-agency website with a public marketing front-end and a
-JWT-protected admin CMS. The **page structure** follows what a typical Nepali
-travel-agency site offers (home, about, gallery, services, packages,
-destinations, visa, blogs, FAQ, contact) — a layout, not a design, is not
-copyrightable.
-
-All **code, headings, body copy and logo are original** to this project. The
-destination **photographs** are freely-licensed files from Wikimedia Commons
-(CC BY / CC BY-SA / public domain) used with full attribution — see
-`public/images/credits.json` and the "Photo credits & licences" list in the
-site footer. No text copy, logo or markup was copied from any other site.
+JWT-protected admin CMS. **Modelled on the structure of a typical Nepali travel
+agency site** (home, about, gallery, services, packages, destinations, visa,
+blogs, FAQ, contact) but with **100% original code, copy and artwork**. No text,
+images, logo or markup were copied from any third party.
 
 ## Travel assistant chat (local AI)
 
@@ -232,14 +226,7 @@ travel-nepal/
 3. Back up `data/travel.db` (WAL mode) regularly.
 4. Use a process manager (systemd, PM2) with `npm start`.
 
-## License & copyright
+## License
 
-- **Application code, headings, body copy and logo artwork:** original work by
-  the project author. Provided as-is for demonstration and as a starting point
-  for a real agency site.
-- **Photographs** (`public/images/*.jpg`): each carries its own licence
-  (Creative Commons or public domain) and a named author, recorded in
-  `public/images/credits.json`. Those licences require attribution, which the
-  site provides next to each photo and in the footer credits list. If you
-  replace them with your own photography, drop the files into `public/images/`
-  using the same slugs and delete the corresponding `credits.json` entries.
+Original work. Provided as-is for demonstration and as a starting point for a
+real agency site.

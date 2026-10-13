@@ -6,9 +6,9 @@
  */
 
 (function () {
-  const PHONE = '+977 9800000000';
-  const EMAIL = 'roshantharu850me@gmail.com';
-  const ADDRESS = 'Lakeside Road, Pokhara, Nepal';
+  const PHONE = '+977 9768565481';
+  const EMAIL = 'info@industravelnepal.com';
+  const ADDRESS = 'Sinamangal-9, Kathmandu, Nepal';
 
   // Primary navigation. `children` renders a hover/click sub-menu (the same
   // pattern the reference layout uses for About and Visa).
@@ -44,7 +44,6 @@
       ]
     },
     { href: 'blogs.html', label: 'Blogs' },
-    { href: 'documents.html', label: 'Documents' },
     { href: 'faq.html', label: 'FAQ' },
     { href: 'contact.html', label: 'Contact Us' }
   ];

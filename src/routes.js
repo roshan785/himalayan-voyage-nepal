@@ -19,9 +19,9 @@ const {
 
 const SITE = {
   name: 'Himalayan Voyage Nepal',
-  tagline: 'Explore Nepal, Discover the World',
+  tagline: 'Discover Nepal & Explore the World',
   phone: '+977 9800000000',
-  email: 'roshantharu850me@gmail.com',
+  email: 'hello@himalayanvoyage.test',
   address: 'Lakeside Road, Pokhara, Nepal',
   hours: 'Sun\u2013Fri: 10 AM \u2013 5 PM',
   social: {
@@ -109,6 +109,12 @@ function normaliseDestination(body) {
     region: str(body.region, 200),
     image: str(body.image, 300),
     description: str(body.description, 2000),
+    country: str(body.country, 120),
+    capital: str(body.capital, 120),
+    currency: str(body.currency, 120),
+    language: str(body.language, 160),
+    best_time: str(body.best_time, 200),
+    visa: str(body.visa, 200),
     featured: body.featured ? 1 : 0
   };
 }

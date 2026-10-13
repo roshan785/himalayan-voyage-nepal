@@ -436,17 +436,7 @@ const App = (() => {
       'stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg>';
     b.addEventListener('click', () => window.scrollTo({ top: 0, behavior: 'smooth' }));
     document.body.appendChild(b);
-    // rAF-throttled so the handler runs at most once per painted frame
-    // (a raw scroll listener fires many times per frame and causes jank).
-    let ticking = false;
-    const onScroll = () => {
-      if (ticking) return;
-      ticking = true;
-      requestAnimationFrame(() => {
-        b.classList.toggle('is-on', window.scrollY > 500);
-        ticking = false;
-      });
-    };
+    const onScroll = () => { b.classList.toggle('is-on', window.scrollY > 500); };
     window.addEventListener('scroll', onScroll, { passive: true });
     onScroll();
   }

@@ -12,6 +12,7 @@
 const fs = require('fs');
 const path = require('path');
 const { DatabaseSync } = require('node:sqlite');
+const { ensureDestinationColumns } = require('./db-migrate');
 
 const DB_PATH = process.env.DB_PATH || path.join(__dirname, '..', 'data', 'travel.db');
 fs.mkdirSync(path.dirname(DB_PATH), { recursive: true });
@@ -104,6 +105,10 @@ CREATE INDEX IF NOT EXISTS idx_contacts_created ON contacts(created_at);
 
 db.exec(SCHEMA);
 
+// Add destination-detail columns (country/capital/currency/language/best_time/
+// visa) on databases created before those fields existed. Idempotent.
+ensureDestinationColumns(db);
+
 /** Turn a title into a URL-safe slug. */
 function slugify(text) {
   return String(text || '')
@@ -133,31 +138,51 @@ function run(sql, params = []) {
 // Seed data (only inserted when the relevant table is empty)
 // ---------------------------------------------------------------------------
 
+/**
+ * Destination overview details shown on the destination detail page
+ * (reference parity: Country / Capital / Currency / Language / Best time / Visa).
+ * Keyed by slug so it can both seed fresh databases and backfill old rows.
+ */
+const DESTINATION_DETAILS = {
+  'pokhara': { country: 'Nepal', capital: 'Kathmandu', currency: 'Nepali Rupees', language: 'Nepali', best_time: 'Spring, Autumn, and Winter', visa: 'No visa requirement' },
+  'rara-lake': { country: 'Nepal', capital: 'Kathmandu', currency: 'Nepali Rupees', language: 'Nepali', best_time: 'Spring, Autumn, and Winter', visa: 'No visa requirement' },
+  'mustang': { country: 'Nepal', capital: 'Kathmandu', currency: 'Nepali Rupees', language: 'Nepali', best_time: 'Spring, Autumn, and Winter', visa: 'No visa requirement' },
+  'ghandruk': { country: 'Nepal', capital: 'Kathmandu', currency: 'Nepali Rupees', language: 'Nepali', best_time: 'Spring, Autumn, and Winter', visa: 'No visa requirement' },
+  'chitwan-national-park': { country: 'Nepal', capital: 'Kathmandu', currency: 'Nepali Rupees', language: 'Nepali', best_time: 'Autumn and Spring', visa: 'No visa requirement' },
+  'dhorpatan': { country: 'Nepal', capital: 'Kathmandu', currency: 'Nepali Rupees', language: 'Nepali', best_time: 'Spring and Autumn', visa: 'No visa requirement' },
+  'london': { country: 'United Kingdom', capital: 'London', currency: 'Pound Sterling', language: 'English', best_time: 'May to September', visa: 'Visa required' },
+  'tokyo': { country: 'Japan', capital: 'Tokyo', currency: 'Japanese Yen', language: 'Japanese', best_time: 'March to May, October to November', visa: 'Visa required' },
+  'bangkok': { country: 'Thailand', capital: 'Bangkok', currency: 'Thai Baht', language: 'Thai', best_time: 'November to February', visa: 'Visa required' },
+  'paris': { country: 'France', capital: 'Paris', currency: 'Euro', language: 'French', best_time: 'April to June, September to October', visa: 'Visa required (Schengen)' },
+  'barcelona': { country: 'Spain', capital: 'Madrid', currency: 'Euro', language: 'Spanish', best_time: 'May to September', visa: 'Visa required (Schengen)' },
+  'rome': { country: 'Italy', capital: 'Rome', currency: 'Euro', language: 'Italian', best_time: 'April to June, September to October', visa: 'Visa required (Schengen)' }
+};
+
 const SEED_DESTINATIONS = [
   { name: 'Pokhara', kind: 'nepal', region: 'Gandaki', featured: 1, image: 'phewa-lake',
-    description: 'Lakeside calm, Annapurna views and the gateway to the Annapurna region.' },
+    description: 'Pokhara is Nepal\'s second-largest city and the country\'s premier lakeside destination, set on the shores of Phewa Lake with the Annapurna range rising behind it. Known as the gateway to the Annapurna region, it blends relaxed cafés and lakeside walks with easy access to Sarangkot, the World Peace Pagoda, Davis Falls and Gupteshwor Cave. Paragliding, zip-lining and boating make it a favourite for travellers who want adventure without a long trek.' },
   { name: 'Rara Lake', kind: 'nepal', region: 'Karnali', featured: 1, image: 'rara-lake',
-    description: 'Nepal\u2019s largest lake, ringed by pine forest inside Rara National Park.' },
+    description: 'Rara Lake is the largest freshwater lake in Nepal and one of the country\u2019s most spectacular natural attractions. Nestled within Rara National Park, the lake is renowned for its crystal-clear blue waters, pristine forests, peaceful surroundings and breathtaking mountain scenery. Often referred to as the \u201cQueen of Lakes,\u201d Rara offers a tranquil escape for nature lovers, trekkers and photographers who make the journey to remote Karnali.' },
   { name: 'Mustang', kind: 'nepal', region: 'Gandaki', featured: 1, image: 'mustang',
-    description: 'The high, arid trans-Himalayan plateau beyond the Kali Gandaki gorge.' },
+    description: 'Mustang is the high, arid trans-Himalayan plateau hidden beyond the world\'s deepest gorge, the Kali Gandaki. The walled capital of Lo Manthang, ochre cliffs and centuries-old monasteries give Upper Mustang the feel of a different world. The landscape is dry, wind-carved and full of Tibetan-influenced culture — a superb region for travellers seeking a trek unlike any other in Nepal.' },
   { name: 'Ghandruk', kind: 'nepal', region: 'Gandaki', featured: 0, image: 'ghandruk',
-    description: 'A Gurung heritage village with one of the finest Annapurna panoramas.' },
+    description: 'Ghandruk is a traditional Gurung village perched on the hillside of the Annapurna region, famous for its stone-paved lanes, terraced fields and close-up views of Machhapuchhre and Annapurna South. It is one of the most popular short-trek destinations in Nepal and a window into local Gurung culture, with homestays and a Gurung museum at the top of the village.' },
   { name: 'Chitwan National Park', kind: 'nepal', region: 'Bagmati', featured: 0, image: 'chitwan',
-    description: 'UNESCO-listed lowland jungle, rhinos, and river safaris.' },
+    description: 'Chitwan National Park is Nepal\'s first national park and a UNESCO World Heritage Site, protecting a rich lowland ecosystem of sal forest, tall grassland and riverine floodplain. It is home to the greater one-horned rhinoceros, Bengal tiger, gharial crocodile and hundreds of bird species. Jungle walks, canoe trips on the Rapti and Tharu cultural evenings make it one of Asia\'s finest wildlife destinations.' },
   { name: 'Dhorpatan', kind: 'nepal', region: 'Dhaulagiri', featured: 0, image: 'dhorpatan',
-    description: 'Nepal\u2019s only hunting reserve, on a wide, quiet valley floor.' },
+    description: 'Dhorpatan is a wide, quiet valley in western Nepal that holds the country\u2019s only hunting reserve, ringed by fir and rhododendron forest at around 3,000 metres. Dhorpatan is little-visited, making it ideal for travellers who want solitude, open skies and a genuine off-the-beaten-path trek far from the main tourist routes.' },
   { name: 'London', kind: 'international', region: 'United Kingdom', featured: 0, image: 'london',
-    description: 'Historic streets, royal landmarks and world-class museums.' },
+    description: 'London is the United Kingdom\'s capital and one of the world\'s great cities, mixing royal history with modern culture. Visit the Tower of London, Buckingham Palace, the Houses of Parliament and Westminster Abbey, then the British Museum, Tate Modern and West End theatres. Day trips to Stonehenge, Windsor Castle and Bath are easy, and world-class shopping and dining lie around every corner.' },
   { name: 'Tokyo', kind: 'international', region: 'Japan', featured: 0, image: 'tokyo',
-    description: 'Neon districts balanced with temples, gardens and quiet lanes.' },
+    description: 'Tokyo is Japan\'s vast, orderly capital, where neon-lit districts sit beside quiet shrines and immaculate gardens. Explore Senso-ji temple, the Meiji Shrine and the Imperial Palace, then dive into Shibuya, Shinjuku and the old lanes of Asakusa. Tokyo is also the perfect base for day trips to Mount Fuji and Nikko, with some of the best food and transport in the world.' },
   { name: 'Bangkok', kind: 'international', region: 'Thailand', featured: 1, image: 'bangkok',
-    description: 'Golden temples, floating markets and some of Asia\u2019s best street food.' },
+    description: 'Bangkok is Thailand\u2019s energetic capital, famous for its golden temples, floating markets and legendary street food. Visit the Grand Palace and Wat Pho, cruise the Chao Phraya river, and shop from Chatuchak market to luxury malls. With a warm welcome, excellent value and a springboard to the rest of Thailand, Bangkok works for both first-time and returning travellers.' },
   { name: 'Paris', kind: 'international', region: 'France', featured: 0, image: 'paris',
-    description: 'Boulevard cafés, world art and a skyline built around the Seine.' },
+    description: 'Paris is France\'s elegant capital, built around the Seine and packed with world-famous art, architecture and cuisine. See the Eiffel Tower, the Louvre, Notre-Dame and Montmartre, then stroll the boulevards and riverside cafés. Day trips to Versailles and Giverny round off a city that has inspired travellers for centuries.' },
   { name: 'Barcelona', kind: 'international', region: 'Spain', featured: 0, image: 'barcelona',
-    description: 'Gaud\u00ed architecture, beaches and a famously energetic old town.' },
+    description: 'Barcelona is Spain\u2019s vibrant Catalan capital, where Gaud\u00ed\u2019s architecture meets beaches, markets and a famously energetic old town. Tour the Sagrada Fam\u00edlia and Park G\u00fcell, wander the Gothic Quarter and Las Ramblas, and enjoy the tapas culture. With sunshine, art and sea air, Barcelona is one of Europe\u2019s most enjoyable city breaks.' },
   { name: 'Rome', kind: 'international', region: 'Italy', featured: 0, image: 'rome',
-    description: 'Layered history from the Colosseum to Renaissance piazzas.' }
+    description: 'Rome is Italy\'s capital and an open-air museum, layering ancient, Renaissance and baroque history across every quarter. Explore the Colosseum, Roman Forum and Pantheon, toss a coin in the Trevi Fountain, and visit Vatican City. With superb food and the Amalfi, Florence and Tuscany within reach, Rome is the perfect base for a European adventure.' }
 ];
 
 const SEED_PACKAGES = [
@@ -239,10 +264,30 @@ function seedIfEmpty() {
   const destCount = get('SELECT COUNT(*) AS n FROM destinations').n;
   if (destCount === 0) {
     const stmt = db.prepare(
-      'INSERT INTO destinations (name, slug, kind, region, image, description, featured) VALUES (?, ?, ?, ?, ?, ?, ?)'
+      `INSERT INTO destinations
+        (name, slug, kind, region, image, description, featured, country, capital, currency, language, best_time, visa)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     );
     for (const d of SEED_DESTINATIONS) {
-      stmt.run(d.name, slugify(d.name), d.kind, d.region, d.image, d.description, d.featured);
+      const det = DESTINATION_DETAILS[slugify(d.name)] || {};
+      stmt.run(d.name, slugify(d.name), d.kind, d.region, d.image, d.description, d.featured,
+        det.country || '', det.capital || '', det.currency || '', det.language || '',
+        det.best_time || '', det.visa || '');
+    }
+  } else {
+    // Backfill the detail columns for rows created before those columns
+    // existed, so an already-seeded database gains the same Overview data
+    // without needing a reset.
+    const missing = all("SELECT id, slug FROM destinations WHERE country = '' OR best_time = ''");
+    if (missing.length) {
+      const upd = db.prepare(
+        'UPDATE destinations SET country = ?, capital = ?, currency = ?, language = ?, best_time = ?, visa = ? WHERE id = ?'
+      );
+      for (const row of missing) {
+        const det = DESTINATION_DETAILS[row.slug];
+        if (!det) continue;
+        upd.run(det.country, det.capital, det.currency, det.language, det.best_time, det.visa, row.id);
+      }
     }
   }
 
