@@ -1,0 +1,116 @@
+# Database persistence — migration & operations guide
+
+The app now supports **two storage drivers** and picks one automatically:
+
+| `DATABASE_URL` | Driver | Persistence |
+|---|---|---|
+| not set | SQLite (`node:sqlite`, file `data/travel.db`) | **ephemeral on free hosts** — wiped on redeploy/spin-down |
+| set | PostgreSQL (`pg`) | **persistent** — survives redeploys |
+
+Nothing else in the codebase changes between the two. Verify which one a running
+instance is using:
+
+    curl -s https://<your-app>/api/health
+    # {"ok":true,...,"db":"sqlite","dbPersistent":false}
+    # {"ok":true,...,"db":"postgres","dbPersistent":true}
+
+---
+
+## 1. Create a free PostgreSQL database
+
+Render's own free Postgres **expires 30 days after creation**, so it is not a
+persistence solution. Use a managed provider whose free tier does not expire,
+then copy its connection string.
+
+| Provider | Free tier | Expires? |
+|---|---|---|
+| Neon | yes | no |
+| Supabase | yes | no (pauses after long inactivity; resumes on connect) |
+| Render Postgres | yes | **yes - 30 days** |
+
+> Confirm the current limits on the provider's pricing page before relying on it.
+> The app needs well under 1 GB.
+
+The connection string looks like:
+
+    postgresql://USER:PASSWORD@HOST/DBNAME?sslmode=require
+
+---
+
+## 2. Import the existing data (preserves ids + password hashes)
+
+Run this **from the machine that still has the SQLite file** (e.g. your laptop,
+before it is lost):
+
+    cd apps/travel-nepal
+    DATABASE_URL='postgresql://USER:PASSWORD@HOST/DBNAME?sslmode=require' npm run migrate:pg
+
+What the script guarantees:
+
+- **IDs are inserted explicitly**, so any id-based reference keeps working.
+- **setval() resets every SERIAL sequence** - without this the next INSERT
+  reuses id 1 and fails with a duplicate key (the classic migration bug).
+- **One transaction per table** - a failure rolls back, target left untouched.
+- **Password hashes are copied byte-for-byte** (bcrypt strings); no plaintext.
+- Idempotent: re-running skips tables whose counts already match (`--force`
+  re-imports anyway).
+
+Expected output ends with:
+
+    ✅ password hash preserved (bcrypt string identical, not printed)
+    RESULT: ✅ migration verified - ids, data and password hashes match.
+
+## 3. Verify without writing anything
+
+    DATABASE_URL='...' npm run migrate:verify
+
+Prints per-table SQLite vs PostgreSQL counts and `<table> MATCH|MISMATCH`.
+
+## 4. Point the deployed app at PostgreSQL
+
+Add the environment variable on the host and redeploy:
+
+- **Render:** Dashboard -> your service -> *Environment* -> add `DATABASE_URL` ->
+  Save (it redeploys). Then check `/api/health` shows `"dbPersistent": true`.
+
+Nothing else is required - no code change, no `render.yaml` edit.
+
+## 5. Roll back
+
+Delete the `DATABASE_URL` environment variable and redeploy. The app falls back
+to SQLite immediately. Keep the `backups/` files until you are satisfied.
+
+---
+
+## Local development
+
+Unchanged and dependency-free:
+
+    npm start        # SQLite, no configuration
+    npm run seed     # creates schema + admin if missing
+    npm test         # 49 tests (run on whichever driver DATABASE_URL selects)
+
+Test the PostgreSQL path locally:
+
+    DATABASE_URL='postgresql://user@127.0.0.1:5432/hvtest?sslmode=disable' npm test
+
+## Proving persistence (restart test)
+
+    npm run test:persist                                     # SQLite
+    DATABASE_URL='...' ADMIN_EMAIL=... ADMIN_PASSWORD=... npm run test:persist
+
+It starts the server, writes a booking and edits a package, **kills the
+process**, boots a second one against the same storage, and re-reads the rows.
+
+## Backups
+
+    sqlite3 data/travel.db ".backup 'backups/travel-$(date +%s).db'"
+    pg_dump "$DATABASE_URL" > "backups/pg-$(date +%s).sql"
+
+`backups/` is git-ignored. Take one before any migration.
+
+## Admin password recovery
+
+    npm run admin:pass -- 'NewPasswordHere' admin@example.com
+
+Works against whichever driver is active.
