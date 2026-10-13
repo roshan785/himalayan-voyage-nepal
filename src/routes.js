@@ -12,7 +12,7 @@
  */
 
 const express = require('express');
-const { all, get, run, slugify } = require('./db');
+const { all, get, run, slugify, driver } = require('./db');
 const {
   verifyPassword, issueToken, requireAuth, findUserByEmail, TOKEN_COOKIE
 } = require('./auth');
@@ -231,7 +231,15 @@ function publicRouter() {
   const router = express.Router();
 
   router.get('/health', async (_req, res) => {
-    res.json({ ok: true, service: 'himalayan-voyage', uptime: process.uptime() });
+    res.json({
+      ok: true,
+      service: 'himalayan-voyage',
+      uptime: process.uptime(),
+      // Lets anyone confirm from outside whether this instance is on persistent
+      // PostgreSQL or the ephemeral SQLite fallback.
+      db: driver.kind,
+      dbPersistent: driver.kind === 'postgres'
+    });
   });
 
   router.get('/site', async (_req, res) => res.json(SITE));
