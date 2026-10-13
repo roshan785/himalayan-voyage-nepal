@@ -64,6 +64,16 @@ function backupPostgres() {
     console.log('  DATABASE_URL is not a valid URL — cannot back up.');
     return null;
   }
+  // Resolve to an IPv4 address and force pg_dump to use it (PGHOSTADDR). This
+  // runtime's IPv6 route to the Neon pooler fails with "SSL error: unexpected
+  // eof" while IPv4 connects fine, so without this the dump reliably fails.
+  let hostaddr = null;
+  try {
+    const { execFileSync } = require('child_process');
+    const out = execFileSync('getent', ['ahostsv4', url.hostname], { encoding: 'utf8', timeout: 5000 });
+    hostaddr = (out.split('\n')[0] || '').split(/\s+/)[0] || null;
+  } catch (_e) { /* fall back to hostname resolution */ }
+
   // Pass credentials via the environment, never on argv: a failed pg_dump
   // prints its command line, which would leak the password into logs.
   const env = {
@@ -71,6 +81,7 @@ function backupPostgres() {
     PGPASSWORD: decodeURIComponent(url.password || ''),
     PGSSLMODE: 'require'
   };
+  if (hostaddr) env.PGHOSTADDR = hostaddr;
   const args = [
     '--no-owner', '--no-privileges',
     '-h', url.hostname,
