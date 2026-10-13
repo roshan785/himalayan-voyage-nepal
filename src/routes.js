@@ -231,18 +231,15 @@ function publicRouter() {
   const router = express.Router();
 
   router.get('/health', async (_req, res) => {
-    // Never expose the value — only whether the variable is present, whether it
-    // looks like PostgreSQL, and a short non-reversible fingerprint. Without
-    // this, a deployment that silently falls back to SQLite gives no way to tell
-    // "variable missing" apart from "variable present but malformed".
+    // Never expose a value — only whether each production variable reached the
+    // container, plus a short non-reversible fingerprint for DATABASE_URL.
+    // Without this, a deployment that silently falls back to SQLite gives no way
+    // to tell "variable missing" apart from "variable present but malformed".
     const rawUrl = process.env.DATABASE_URL || '';
-    const urlShape = {
-      present: rawUrl.length > 0,
-      isPostgres: /^postgres(ql)?:\/\//i.test(rawUrl.trim()),
-      fingerprint: rawUrl
-        ? require('crypto').createHash('sha256').update(rawUrl).digest('hex').slice(0, 8)
-        : null
-    };
+    const envPresence = {};
+    for (const key of ['DATABASE_URL', 'JWT_SECRET', 'ADMIN_EMAIL', 'ADMIN_PASSWORD']) {
+      envPresence[key] = (process.env[key] || '').length > 0;
+    }
     res.json({
       ok: true,
       service: 'himalayan-voyage',
@@ -251,7 +248,14 @@ function publicRouter() {
       // PostgreSQL or the ephemeral SQLite fallback.
       db: driver.kind,
       dbPersistent: driver.kind === 'postgres',
-      databaseUrl: urlShape
+      databaseUrl: {
+        present: rawUrl.length > 0,
+        isPostgres: /^postgres(ql)?:\/\//i.test(rawUrl.trim()),
+        fingerprint: rawUrl
+          ? require('crypto').createHash('sha256').update(rawUrl).digest('hex').slice(0, 8)
+          : null
+      },
+      env: envPresence
     });
   });
 

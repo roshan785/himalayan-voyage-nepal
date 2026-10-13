@@ -1,16 +1,19 @@
 # Render Blueprint for Himalayan Voyage Nepal.
 #
-# This file is the source of truth for the service configuration. It is applied
-# through the Quickstart page (Add new -> Blueprint) because the dashboard cannot
-# move a running service under Blueprint management.
+# Source of truth for the service configuration. Apply it from the Quickstart
+# page (Add new -> Blueprint -> pick this repo -> Apply).
 #
-# Secrets are NEVER stored here. `sync: false` marks a variable as required, so
-# Render prompts for its value and keeps it encrypted in the dashboard.
+# IMPORTANT: there is deliberately NO envVars block here.
 #
-# Required values (all already generated, mode 600, never committed):
-#   DATABASE_URL    -> apps/travel-nepal/.env
-#   JWT_SECRET      -> ~/.openos/secrets/travel-nepal-jwt-secret.txt
-#   ADMIN_PASSWORD  -> ~/.openos/secrets/travel-nepal-admin.txt
+# Render treats a Blueprint-declared environment variable as authoritative and
+# OVERWRITES the dashboard value. Declaring DATABASE_URL / JWT_SECRET /
+# ADMIN_PASSWORD (even with sync: false) left all of them empty inside the
+# container, so the app silently ran on the ephemeral SQLite file while the
+# dashboard showed the variables as configured.
+#
+# Production variables therefore live ONLY in the dashboard:
+#   Dashboard -> himalayan-voyage-nepal -> Environment
+#     DATABASE_URL, JWT_SECRET, ADMIN_PASSWORD, ADMIN_EMAIL, NODE_VERSION
 
 services:
   - type: web
@@ -22,19 +25,3 @@ services:
     buildCommand: npm install
     startCommand: npm start
     healthCheckPath: /api/health
-    envVars:
-      # Pin the runtime the code is tested on (node:sqlite needs Node 20+; the
-      # app is verified on 22).
-      - key: NODE_VERSION
-        value: "22.22.1"
-
-      # NOTE: DATABASE_URL, JWT_SECRET and ADMIN_PASSWORD are intentionally NOT
-      # declared here. Render treats a Blueprint entry as authoritative and
-      # overwrites the dashboard value, which left process.env.DATABASE_URL
-      # empty at runtime (health reported db:"sqlite" even though the variable
-      # was set). Secrets therefore live only in the dashboard.
-      #
-      # Set these three in Render -> Environment:
-      #   DATABASE_URL, JWT_SECRET, ADMIN_PASSWORD
-      - key: ADMIN_EMAIL
-        value: admin@himalayanvoyage.test
