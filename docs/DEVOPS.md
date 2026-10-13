@@ -29,9 +29,24 @@ npm run ci            # lint + secret-scan + tests
 npm run secret-scan   # scan the tracked tree for leaked credentials
 ```
 
-### Adding a required status check (optional, recommended)
-GitHub → Settings → Branches → protect `master` → require the `build-test`
-status check. This blocks a direct push that fails CI (requires admin access).
+### Adding a required status check (DONE)
+Branch protection **is applied** on `master`:
+`required_status_checks = ["Tests, lint & audit"]`, force-push and deletion blocked,
+`enforce_admins = false` (so the owner can still push hotfixes — set it to true if
+you want even admins gated). Verify anytime:
+
+```bash
+gh api repos/roshan785/himalayan-voyage-nepal/branches/master/protection
+```
+
+### Render ↔ CI binding (BLOCKER — needs dashboard)
+Render's blueprint has `autoDeploy: true`, which **deploys on push regardless of
+CI** — it is not wired to GitHub Actions. Binding it requires a Render dashboard
+change (Web service → Settings → *Auto-Deploy: After CI Checks Pass*) or a Render
+API key, **neither of which is available here**. Until that is done, a red CI run
+is visible on the PR/commit but does not by itself block the deploy. Mitigation in
+place: `deploy-guard` verifies the live service after every push and fails the
+workflow if the released commit is unhealthy.
 
 ---
 
@@ -44,8 +59,25 @@ status check. This blocks a direct push that fails CI (requires admin access).
 | `npm run uptime:watch` | Loop every 5 min (for a host with a scheduler) |
 | `npm run deploy:verify` | Poll the live URL until healthy; used by CI and after rollback |
 
-`uptime-check.js` and `deploy-verify.js` use the **core `https` module** (not
-global `fetch`) because this runtime blocks undici; they are dependency-free.
+`uptime-check.js`, `deploy-verify.js` and `ops-status.js` use the **core `https`
+module** with **`family: 4`** — this runtime's IPv6 route to the CDN black-holes
+(connect timeout) while IPv4 answers in ~300 ms, so without forcing IPv4 every
+check waits for the IPv6 timeout and reports a false DOWN. They are
+dependency-free. All three retry transient failures before declaring DOWN.
+
+### Cloud monitoring (works when your laptop is OFF)
+
+`.github/workflows/monitor.yml` runs **on GitHub every 15 minutes** and does not
+depend on this machine:
+
+- **Site health** — `uptime-check.js` (requires `db=postgres` + `persistent=true`).
+- **Database connectivity** — an independent `/api/stats` query.
+- **Endpoint + 404 sanity** — `/api/packages`, `/api/destinations`, `/api/site` (200) and a 404 check.
+
+Any failure fails the workflow and **GitHub emails the repo owner automatically**.
+Add repo secrets `UPTIME_WEBHOOK` / `DISCORD_WEBHOOK` for richer alerts. A
+cloud-side *backup* check is included but **skipped** until a `DATABASE_URL`
+secret is provided (backups run locally/host-side; see §3).
 
 ### Alerting (optional)
 Set **one** of these env vars to receive a message on the first failure and on
@@ -57,11 +89,14 @@ DISCORD_WEBHOOK=https://discord.com/api/webhooks/…
 TELEGRAM_WEBHOOK=https://…          # any webhook that accepts {text}
 ```
 
-Without a webhook the scripts still log to `/tmp/travel-uptime.log` — alerts are
-simply not delivered. **No paid service is configured by default.**
+Without a webhook the scripts still log, and GitHub still reports workflow
+failures by email — alerts to a chat app are simply not delivered.
+**No paid service is configured by default.**
 
 ### Scheduled jobs (this machine)
-Registered in the OpenOS scheduler (run only while OpenOS is running here):
+Registered in the OpenOS scheduler; they run **only while OpenOS is running here**
+(the laptop being off stops them — that is exactly why the GitHub `monitor.yml`
+exists as the always-on layer):
 
 | Cron | Name | Action |
 |------|------|--------|
@@ -69,8 +104,7 @@ Registered in the OpenOS scheduler (run only while OpenOS is running here):
 | `*/10 * * * *` | `travel-nepal-uptime-10min` | health check → `/tmp/travel-uptime.log` |
 | `0 */6 * * *` | `travel-nepal-ops-status-6h` | ops report → `/tmp/travel-ops.log` |
 
-On a server you control, prefer systemd timers over the OpenOS scheduler so the
-jobs run independently. Example unit is in §7.
+For a persistent server-side backup schedule use a systemd timer (§7).
 
 ---
 

@@ -29,7 +29,7 @@ function get(target, timeoutMs = 20000) {
     const started = Date.now();
     let u; try { u = new NodeURL(target); } catch (e) { return resolve({ ok: false, error: e.message }); }
     const lib = u.protocol === 'http:' ? http : https;
-    const req = lib.request({ hostname: u.hostname, port: u.port || 443, path: u.pathname + u.search, method: 'GET' }, (res) => {
+    const req = lib.request({ hostname: u.hostname, port: u.port || 443, path: u.pathname + u.search, method: 'GET', family: 4 }, (res) => {
       let d = ''; res.setEncoding('utf8'); res.on('data', (c) => { d += c; });
       res.on('end', () => resolve({ ok: true, status: res.statusCode, ms: Date.now() - started, body: d }));
     });

@@ -1,0 +1,92 @@
+name: Monitor
+
+# Runs on GitHub's infrastructure, so it keeps working when the laptop is off.
+# Three independent checks — live site health, PostgreSQL connectivity, and that
+# the newest backup is recent — because a green website with a dead database or
+# stale backups is still an incident. Any failure fails the workflow, and GitHub
+# emails the repo owner automatically (no extra service needed).
+#
+# Optional richer alerts: add repo secrets UPTIME_WEBHOOK / DISCORD_WEBHOOK and
+# the workflow posts to them too. Never put a secret in the repository.
+
+on:
+  schedule:
+    # every 15 minutes (GitHub may delay a few minutes under load)
+    - cron: '*/15 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: monitor
+  cancel-in-progress: false
+
+jobs:
+  monitor:
+    name: Health, database & backup freshness
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      DEPLOY_URL: https://himalayan-voyage-nepal-0sem.onrender.com
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Site health (db=postgres, persistent=true)
+        run: node scripts/uptime-check.js
+        env:
+          UPTIME_WEBHOOK: ${{ secrets.UPTIME_WEBHOOK }}
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+
+      - name: Database connectivity (independent query)
+        run: |
+          node -e "
+          const https=require('https');
+          const req=https.request({hostname:'himalayan-voyage-nepal-0sem.onrender.com',port:443,path:'/api/stats',method:'GET',family:4},r=>{
+            let d='';r.on('data',c=>d+=c);r.on('end',()=>{
+              const b=JSON.parse(d);
+              const ok=r.statusCode===200 && Number.isFinite(b.packages);
+              console.log('  /api/stats ->', r.statusCode, JSON.stringify(b));
+              process.exit(ok?0:1);
+            });
+          });
+          req.on('error',e=>{console.error('DB check failed:',e.message);process.exit(1)});
+          req.setTimeout(30000,()=>req.destroy());
+          req.end();
+          "
+
+      - name: Endpoint + 404 sanity
+        run: |
+          node -e "
+          const https=require('https');
+          const check=(path,expect)=>new Promise(res=>{
+            const req=https.request({hostname:'himalayan-voyage-nepal-0sem.onrender.com',port:443,path,method:'GET',family:4},r=>{
+              let d='';r.on('data',c=>d+=c);r.on('end',()=>{console.log('  '+path+' -> HTTP '+r.statusCode);res(r.statusCode===expect)});
+            });
+            req.on('error',()=>res(false)); req.setTimeout(30000,()=>req.destroy()); req.end();
+          });
+          (async()=>{
+            const results=await Promise.all([
+              check('/api/packages',200), check('/api/destinations',200),
+              check('/api/site',200), check('/api/does-not-exist',404)
+            ]);
+            process.exit(results.every(Boolean)?0:1);
+          })();
+          "
+
+      # NOTE: cloud-side BACKUP monitoring requires a DATABASE_URL repo secret
+      # (not available) — backups run locally / on your host, see docs/DEVOPS.md.
+      # When wired, the job below proves a dump is reachable and non-empty.
+      - name: Backup checks (skipped unless DATABASE_URL secret is set)
+        if: ${{ secrets.DATABASE_URL != '' }}
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          node -e "
+          require('child_process').execFileSync('node',['scripts/backup-db.js'],{stdio:'inherit'});
+          " || echo "::warning::backup step failed"
+

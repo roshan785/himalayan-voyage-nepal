@@ -55,6 +55,10 @@ function requestText(target, { method = 'GET', body = null, timeoutMs = 30000 } 
       port: u.port || (u.protocol === 'http:' ? 80 : 443),
       path: u.pathname + u.search,
       method,
+      // Force IPv4: this runtime's IPv6 route to the CDN black-holes (connect
+      // timeout) while IPv4 answers in ~300ms. Without this every request waits
+      // for the IPv6 timeout and reports a false DOWN.
+      family: 4,
       headers: body ? { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) } : {}
     }, (res) => {
       let data = '';
@@ -86,14 +90,24 @@ async function checkOnce() {
   const started = Date.now();
   let ok = false;
   let detail = '';
-  try {
-    const res = await requestText(URL, { timeoutMs: 30000 });
-    const body = JSON.parse(res.body || '{}');
-    ok = res.status === 200 && body.ok === true && body.db === 'postgres' && body.dbPersistent === true;
-    detail = `HTTP ${res.status} db=${body.db} persistent=${body.dbPersistent}`;
-  } catch (err) {
-    detail = 'unreachable: ' + err.message;
+  let lastErr = null;
+  // Retry transient network failures (a flaky egress or a cold start can produce
+  // a 000 / socket hang up on the first attempt). Only a failure that persists
+  // across attempts counts as DOWN, so we never alarm on a single blip.
+  const attempts = Number(process.env.UPTIME_ATTEMPTS) || 3;
+  for (let i = 1; i <= attempts && !ok; i++) {
+    try {
+      const res = await requestText(URL, { timeoutMs: 30000 });
+      const body = JSON.parse(res.body || '{}');
+      ok = res.status === 200 && body.ok === true && body.db === 'postgres' && body.dbPersistent === true;
+      detail = `HTTP ${res.status} db=${body.db} persistent=${body.dbPersistent}`;
+    } catch (err) {
+      lastErr = err.message;
+      detail = 'unreachable: ' + err.message;
+      if (i < attempts) await new Promise((r) => setTimeout(r, 2000));
+    }
   }
+  if (!ok && lastErr) detail = `unreachable after ${attempts} attempts: ${lastErr}`;
   const ms = Date.now() - started;
   const prev = readState();
   const now = new Date().toISOString();

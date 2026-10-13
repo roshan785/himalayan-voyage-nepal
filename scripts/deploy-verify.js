@@ -25,7 +25,7 @@ function requestText(target, timeoutMs = 20000) {
   return new Promise((resolve, reject) => {
     const u = new NodeURL(target);
     const lib = u.protocol === 'http:' ? http : https;
-    const req = lib.request({ hostname: u.hostname, port: u.port || 443, path: u.pathname + u.search, method: 'GET' },
+    const req = lib.request({ hostname: u.hostname, port: u.port || 443, path: u.pathname + u.search, method: 'GET', family: 4 },
       (res) => { let d = ''; res.setEncoding('utf8'); res.on('data', (c) => { d += c; }); res.on('end', () => resolve({ status: res.statusCode, body: d })); });
     req.on('error', reject);
     req.setTimeout(timeoutMs, () => req.destroy(new Error('timeout')));
