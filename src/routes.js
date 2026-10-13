@@ -75,6 +75,46 @@ function bad(res, message) {
   return res.status(400).json({ error: message });
 }
 
+/**
+ * Wrap an async route handler so a rejected promise reaches the Express error
+ * handler instead of becoming an unhandled rejection.
+ *
+ * Express 4 does NOT catch errors thrown from `async` handlers: the rejection
+ * escapes the router, Node logs it and (by default in Node >= 15) kills the
+ * process — one bad row or a transient DB error would take the whole site down.
+ * Every async route below is wrapped in this so a failure becomes a clean 500.
+ */
+function wrap(handler) {
+  return function wrapped(req, res, next) {
+    Promise.resolve(handler(req, res, next)).catch(next);
+  };
+}
+
+/**
+ * A router whose async handlers are all wrapped so a rejected promise reaches
+ * the Express error handler instead of crashing the process. Express 4 only
+ * auto-catches SYNCHRONOUS throws; an async handler that rejects (a DB error, a
+ * bad row) would otherwise become an unhandled rejection and kill the server.
+ * Using this everywhere means one failing request is a 500, never an outage.
+ */
+function asyncRouter() {
+  const router = express.Router();
+  for (const method of ['get', 'post', 'put', 'patch', 'delete']) {
+    const original = router[method].bind(router);
+    router[method] = (...args) => {
+      const last = args.length - 1;
+      const handler = args[last];
+      // Wrap only plain handlers (a sub-router has 4-arg handle signatures and a
+      // `stack`, and middleware with 4 params is an error handler — leave those).
+      if (typeof handler === 'function' && handler.length <= 3 && !handler.stack) {
+        args[last] = wrap(handler);
+      }
+      return original(...args);
+    };
+  }
+  return router;
+}
+
 /** Normalise a package payload coming from the admin UI or JSON body. */
 function normalisePackage(body) {
   return {
@@ -162,7 +202,7 @@ function normaliseTestimonial(body) {
  * Keeps package/destination/post/testimonial admin endpoints consistent.
  */
 function crudRouter({ table, normalise, hasSlug = true, orderBy = 'id DESC' }) {
-  const router = express.Router();
+  const router = asyncRouter();
 
   router.get('/', async (_req, res) => {
     const rows = await all(`SELECT * FROM ${table} ORDER BY ${orderBy}`);
@@ -228,7 +268,7 @@ function isEmail(value) {
 // ---------------------------------------------------------------------------
 
 function publicRouter() {
-  const router = express.Router();
+  const router = asyncRouter();
 
   router.get('/health', async (_req, res) => {
     // Never expose a value — only whether each production variable reached the
@@ -416,7 +456,7 @@ function publicRouter() {
 // ---------------------------------------------------------------------------
 
 function adminRouter() {
-  const router = express.Router();
+  const router = asyncRouter();
   router.use(requireAuth(true));
 
   router.get('/overview', async (_req, res) => {

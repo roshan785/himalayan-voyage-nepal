@@ -78,6 +78,13 @@ const app = express();
 app.disable('x-powered-by');
 app.use(express.json({ limit: '1mb' }));
 
+// Behind a hosting proxy (Render, nginx) the socket peer is the proxy, so
+// req.ip would be the proxy's address for every visitor — which makes the rate
+// limiter below a single global bucket AND logs the wrong client IP. Trust the
+// first hop so req.ip is the real client. Enabled only for the immediate proxy,
+// not a blanket `true`, to avoid trusting a spoofable X-Forwarded-For chain.
+app.set('trust proxy', 1);
+
 // Baseline security headers (no external dependency required).
 app.use((_req, res, next) => {
   res.setHeader('X-Content-Type-Options', 'nosniff');
@@ -104,6 +111,16 @@ app.use((_req, res, next) => {
 const writeHits = new Map();
 const WRITE_LIMIT = 40;          // requests
 const WRITE_WINDOW_MS = 60_000;  // per minute, per IP
+// Prune expired entries periodically. Without this the map grows without bound
+// (one entry per IP that ever wrote) — a slow memory leak on a long-lived
+// instance. The sweep only removes entries whose window has already reset.
+setInterval(() => {
+  const now = Date.now();
+  for (const [ip, entry] of writeHits) {
+    if (now > entry.reset) writeHits.delete(ip);
+  }
+}, WRITE_WINDOW_MS).unref();
+
 app.use((req, res, next) => {
   const isWrite = req.method === 'POST' && /^\/api\/(contact|newsletter|bookings|auth\/login)/.test(req.path);
   if (!isWrite) return next();
