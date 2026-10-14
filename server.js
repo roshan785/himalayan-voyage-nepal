@@ -86,6 +86,24 @@ app.use(express.json({ limit: '1mb' }));
 app.set('trust proxy', 1);
 
 // Baseline security headers (no external dependency required).
+// Force HTTPS and advertise HSTS so a browser that ever reached the site over
+// http:// is told to use https:// from then on. Without HSTS a browser may keep
+// trying http:// (or a broken secure upgrade) and show "this site doesn't
+// support a secure connection". Localhost is exempt so local dev stays on http.
+app.use((req, res, next) => {
+  const host = String(req.headers.host || '');
+  const isLocal = /^(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/i.test(host);
+  const proto = req.headers['x-forwarded-proto'] || req.protocol;
+  if (!isLocal && proto !== 'https') {
+    return res.redirect(308, 'https://' + host + req.originalUrl);
+  }
+  if (!isLocal) {
+    // One year, all subdomains — the browser will only use HTTPS for this host.
+    res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+  }
+  next();
+});
+
 app.use((_req, res, next) => {
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('X-Frame-Options', 'SAMEORIGIN');
