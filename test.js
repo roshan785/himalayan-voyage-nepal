@@ -302,6 +302,36 @@ async function main() {
   // reported "Nameste photo bigriyeko" bug, whose value was exactly 300 chars).
   // The field must now store inline images intact, and REFUSE an oversized one
   // with a clear message instead of corrupting it.
+  await test('package search is case-insensitive on every driver', async () => {
+    // REGRESSION: the WHERE clause used bare `LIKE`, which is case-SENSITIVE on
+    // PostgreSQL (though not on SQLite). After the site moved to Postgres a
+    // visitor typing "thailand" got zero results for "Amazing Thailand Holiday"
+    // while "Thailand" worked. LOWER(col) LIKE LOWER(?) behaves the same on both.
+    const create = await req('POST', '/api/admin/packages', { token, body: {
+      title: 'Case Sense Probe Zz', category: 'domestic', destination: 'ProbeVille',
+      days: 1, nights: 0, price: 1, discount: 0, image: '', summary: 'probe row', highlights: []
+    } });
+    assert.equal(create.status, 201);
+    const id = create.data.item.id;
+
+    const hits = async (q) => {
+      const r = await req('GET', '/api/packages?q=' + encodeURIComponent(q));
+      assert.equal(r.status, 200, 'search must succeed for q=' + q);
+      return (r.data.items || []).length;
+    };
+
+    for (const q of ['case sense probe zz', 'CASE SENSE PROBE ZZ', 'CaSe SeNsE pRoBe Zz']) {
+      assert.ok(await hits(q) >= 1, `"${q}" must find the row (case-insensitive search)`);
+    }
+    // A query that matches nothing still returns a clean empty list.
+    assert.equal(await hits('zzz-no-such-package-zzz'), 0);
+
+    // Filtering by a destination word must also be case-insensitive.
+    assert.ok(await hits('probeville') >= 1, 'lowercase destination word must match');
+
+    await req('DELETE', '/api/admin/packages/' + id, { token });
+  });
+
   await test('image field stores data URLs intact and rejects oversized ones', async () => {
     const PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFAAH/q842iQAAAABJRU5ErkJggg==';
     const dataUrl = 'data:image/png;base64,' + PNG.repeat(4);   // ~406 chars, over the old 300 cap

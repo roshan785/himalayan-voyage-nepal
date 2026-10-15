@@ -378,8 +378,12 @@ function publicRouter() {
       clauses.push('featured = 1');
     }
     if (q) {
-      clauses.push('(title LIKE ? OR destination LIKE ? OR summary LIKE ?)');
-      const like = `%${str(q, 80)}%`;
+      // Case-insensitive on BOTH drivers. PostgreSQL's LIKE is case-sensitive
+      // (SQLite's is not), so a lowercase query like "thailand" would return
+      // nothing for "Amazing Thailand Holiday" once the site moved to Postgres.
+      // LOWER(col) LIKE LOWER(?) works identically on both.
+      clauses.push('(LOWER(title) LIKE ? OR LOWER(destination) LIKE ? OR LOWER(summary) LIKE ?)');
+      const like = `%${str(q, 80).toLowerCase()}%`;
       params.push(like, like, like);
     }
     const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';
