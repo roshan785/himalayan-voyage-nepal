@@ -76,6 +76,33 @@ function bad(res, message) {
   return res.status(400).json({ error: message });
 }
 
+/* ── Image field handling ───────────────────────────────────────────────────
+   An `image` may be a short path/slug ("images/x.jpg", "london-heritage"), a
+   remote URL, or an inline data URL from the admin file picker (max 400 KB
+   there — see admin.js). It must NEVER be silently truncated: a cut-off data
+   URL is invalid base64, so the browser cannot decode it and the card renders
+   as broken. That is exactly what happened when this field was capped at 300
+   chars — a 400 KB upload became a 300-char invalid string.
+   So: path-ish values get a generous cap, inline data URLs are accepted up to
+   the body limit and rejected with a clear message if bigger. */
+const IMG_PATH_MAX = 500;
+const IMG_INLINE_MAX = 400 * 1024;      // must stay >= admin.js's 400 KB picker cap
+const DATA_URL_RE = /^data:image\/[a-z0-9.+-]+;base64,/i;
+
+function imageField(value, label) {
+  const v = str(value, IMG_INLINE_MAX + IMG_PATH_MAX);
+  if (DATA_URL_RE.test(v)) {
+    if (v.length > IMG_INLINE_MAX) {
+      const err = new Error(`${label} image is too large (${Math.round(v.length / 1024)} KB). ` +
+        `Please use a file under ${Math.round(IMG_INLINE_MAX / 1024)} KB or paste an image URL.`);
+      err.status = 400;
+      throw err;
+    }
+    return v;
+  }
+  return str(value, IMG_PATH_MAX);
+}
+
 /**
  * Wrap an async route handler so a rejected promise reaches the Express error
  * handler instead of becoming an unhandled rejection.
@@ -126,7 +153,7 @@ function normalisePackage(body) {
     nights: Math.max(0, Math.round(num(body.nights, 0))),
     price: Math.max(0, num(body.price, 0)),
     discount: Math.min(90, Math.max(0, num(body.discount, 0))),
-    image: str(body.image, 300),
+    image: imageField(body.image, 'Package'),
     summary: str(body.summary, 2000),
     highlights: JSON.stringify(
       Array.isArray(body.highlights)
@@ -148,7 +175,7 @@ function normaliseDestination(body) {
     name: str(body.name, 200),
     kind: body.kind === 'international' ? 'international' : 'nepal',
     region: str(body.region, 200),
-    image: str(body.image, 300),
+    image: imageField(body.image, 'Destination'),
     description: str(body.description, 2000),
     country: str(body.country, 120),
     capital: str(body.capital, 120),
@@ -167,7 +194,7 @@ function normalisePost(body) {
     excerpt: str(body.excerpt, 600),
     body: str(body.body, 20000),
     author: str(body.author, 120) || 'Editorial Team',
-    cover: str(body.cover, 300),
+    cover: imageField(body.cover, 'Post'),
     published: body.published === false || body.published === 0 ? 0 : 1
   };
 }

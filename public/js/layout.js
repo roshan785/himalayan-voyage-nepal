@@ -70,8 +70,11 @@
     { key: 'tiktok', href: 'https://tiktok.com/@himalayanvoyage', label: 'TikTok' }
   ];
 
+  // Each icon also carries a per-network modifier class (`social-icon--x`) so
+  // the stylesheet can paint it with that network's OWN brand colour on hover
+  // instead of one generic highlight for all of them.
   const socialRow = () => SOCIAL.map((s) =>
-    `<a class="social-icon" href="${s.href}" target="_blank" rel="noopener noreferrer" aria-label="${s.label}" title="${s.label}">${ICON[s.key]}</a>`
+    `<a class="social-icon social-icon--${s.key}" href="${s.href}" target="_blank" rel="noopener noreferrer" aria-label="${s.label}" title="${s.label}">${ICON[s.key]}</a>`
   ).join('');
 
   function header() {
@@ -296,11 +299,146 @@
     });
   }
 
+  /**
+   * The contact popup. Built once, on first use, and appended to <body> so it is
+   * never clipped by an ancestor's overflow or transform. Mounted from this
+   * module (which every page already loads) so the markup stays in one place and
+   * no page needs to be edited.
+   */
+  function contactModal() {
+    let dlg = document.getElementById('contact-modal');
+    if (dlg) return dlg;
+    dlg = document.createElement('div');
+    dlg.id = 'contact-modal';
+    dlg.className = 'dialog-backdrop contact-modal';
+    dlg.setAttribute('role', 'dialog');
+    dlg.setAttribute('aria-modal', 'true');
+    dlg.setAttribute('aria-labelledby', 'contact-modal-title');
+    dlg.innerHTML = `
+    <div class="dialog contact-modal__panel">
+      <div class="contact-modal__head">
+        <div>
+          <h3 id="contact-modal-title">Send a Message</h3>
+          <p class="contact-modal__sub">Tell us about your trip &mdash; we usually reply within one business day.</p>
+        </div>
+        <button class="dialog__close contact-modal__close" type="button" aria-label="Close">&times;</button>
+      </div>
+      <form class="form" id="contact-modal-form" novalidate>
+        <div class="form-row">
+          <div class="field">
+            <label for="cm-name">Full name *</label>
+            <input id="cm-name" name="name" type="text" required maxlength="150" autocomplete="name">
+          </div>
+          <div class="field">
+            <label for="cm-email">Email *</label>
+            <input id="cm-email" name="email" type="email" required maxlength="200" autocomplete="email">
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="field">
+            <label for="cm-phone">Phone / WhatsApp</label>
+            <input id="cm-phone" name="phone" type="tel" maxlength="40" autocomplete="tel">
+          </div>
+          <div class="field">
+            <label for="cm-subject">Subject</label>
+            <input id="cm-subject" name="subject" type="text" maxlength="200" placeholder="e.g. Annapurna trek enquiry">
+          </div>
+        </div>
+        <div class="field">
+          <label for="cm-message">Message *</label>
+          <textarea id="cm-message" name="message" required maxlength="5000" placeholder="Dates, destinations, group size, budget..."></textarea>
+        </div>
+        <div class="form-note" id="contact-modal-note" role="status" aria-live="polite"></div>
+        <div>
+          <button class="btn btn--primary" type="submit" id="contact-modal-submit">Send Message</button>
+        </div>
+      </form>
+    </div>`;
+    // Clicking the dimmed backdrop (but not the panel) closes it, and the header
+    // reuses .dialog__close for the button styling.
+    dlg.addEventListener('click', (e) => { if (e.target === dlg) closeContact(); });
+    const closeBtn = dlg.querySelector('.contact-modal__close');
+    if (closeBtn) closeBtn.addEventListener('click', closeContact);
+    document.body.appendChild(dlg);
+    return dlg;
+  }
+
+  /** Open the contact dialog, optionally pre-filling the subject line. */
+  function openContact(subject) {
+    const dlg = contactModal();
+    // Wire the popup's form once, through the same helper the contact page uses
+    // (main.js loads after this file, so this runs at click time, not at boot).
+    if (!dlg.dataset.wired && window.App && typeof window.App.wireContactForm === 'function') {
+      const ok = window.App.wireContactForm({
+        formId: 'contact-modal-form',
+        noteId: 'contact-modal-note',
+        submitId: 'contact-modal-submit',
+        ids: { name: 'cm-name', email: 'cm-email', phone: 'cm-phone', subject: 'cm-subject', message: 'cm-message' },
+        onSent: () => { window.setTimeout(closeContact, 2200); }
+      });
+      if (ok) dlg.dataset.wired = '1';
+    }
+    const field = dlg.querySelector('#cm-subject');
+    if (field && subject) field.value = subject;
+    dlg.classList.add('is-open');
+    document.documentElement.classList.add('has-contact-modal');
+    const first = dlg.querySelector('input, textarea, button');
+    if (first) first.focus();
+  }
+
+  function closeContact() {
+    const dlg = document.getElementById('contact-modal');
+    if (!dlg) return;
+    dlg.classList.remove('is-open');
+    document.documentElement.classList.remove('has-contact-modal');
+  }
+
+  /**
+   * Any "Contact Now" / "Ask Us" / "Plan Your Trip" button opens the popup
+   * instead of navigating away, so the visitor never loses the page they were
+   * reading. Delegated from the document because these buttons are injected with
+   * the header (and into pages rendered from the API) after load.
+   *
+   * Only plain links to contact.html qualify: a query string (e.g.
+   * ?subject=Bali%20Visa%20Enquiry on the visa pages) pre-fills the form, and
+   * "Contact Us" links inside the drawer/footer keep their normal behaviour so
+   * the real page stays reachable.
+   */
+  const CONTACT_RE = /(^|\/)contact\.html(\?|#|$)/i;
+  function isContactLink(a) {
+    if (!a || a.target === '_blank' || a.hasAttribute('download')) return false;
+    if (a.dataset.contactModal === 'off') return false;
+    const raw = a.getAttribute('href') || '';
+    if (!CONTACT_RE.test(raw)) return false;
+    const url = new URL(a.href, location.href);
+    return url.origin === location.origin && CONTACT_RE.test(url.pathname);
+  }
+
+  function wireContactModal() {
+    if (typeof document === 'undefined') return;
+    document.addEventListener('click', (e) => {
+      // Let modified clicks (new tab / download) behave normally.
+      if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+      const a = e.target.closest && e.target.closest('a[href]');
+      if (!isContactLink(a)) return;
+      e.preventDefault();
+      let subject = '';
+      try { subject = new URL(a.href, location.href).searchParams.get('subject') || ''; } catch (_e) { subject = ''; }
+      openContact(subject);
+    });
+    document.addEventListener('keydown', (e) => {
+      if (e.key !== 'Escape') return;
+      const dlg = document.getElementById('contact-modal');
+      if (dlg && dlg.classList.contains('is-open')) { closeContact(); e.preventDefault(); }
+    });
+  }
+
   if (typeof document !== 'undefined') {
     if (document.readyState === 'loading') {
       document.addEventListener('DOMContentLoaded', mount);
     } else {
       mount();
     }
+    wireContactModal();
   }
 })();

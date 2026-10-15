@@ -233,7 +233,13 @@ const App = (() => {
       // embedded on a deeper path a bare "images/…" 404s and the browser paints
       // bare alt text — the exact "text instead of a photo" symptom. Leading
       // "/" keeps every card pointing at the same absolute image URL.
-      const abs = src.startsWith('/') ? src : '/' + src;
+      //
+      // BUT an absolute URI must never get a prefix: turning a data: URL into
+      // "/data:image/webp;base64," makes the browser request a PATH named
+      // "/data:image/…", which 404s — that is how an inline admin upload ended
+      // up rendering as a broken image.
+      const isAbsolute = /^(data:|https?:|\/\/)/i.test(src);
+      const abs = isAbsolute ? src : (src.startsWith('/') ? src : '/' + src);
       // If a photo ever fails to load (a stale cached failed request, a route
       // hiccup, an offline moment) the browser would otherwise paint bare alt
       // text. Retry ONCE with a cache-buster (defeats a poisoned cache entry),
@@ -485,6 +491,69 @@ const App = (() => {
     requestAnimationFrame(step);
   }
 
+  /**
+   * Validate + submit a contact/enquiry form. Shared by the contact page form
+   * and the "Contact Now" popup so both behave identically (same validation,
+   * same endpoint, same messaging) instead of drifting apart.
+   *
+   * Pass an id map because the two forms use different element id prefixes.
+   * Returns true when the form was found and wired.
+   */
+  function wireContactForm(opts) {
+    const o = opts || {};
+    const form = document.getElementById(o.formId);
+    if (!form) return false;
+    const ids = o.ids || {};
+    const note = document.getElementById(o.noteId);
+    const submit = document.getElementById(o.submitId);
+    const get = (key) => {
+      const el = document.getElementById(ids[key] || key);
+      return el ? String(el.value || '').trim() : '';
+    };
+
+    // Optional ?subject= pre-fill, used by "Enquire" buttons on the visa pages.
+    const subject = new URLSearchParams(location.search).get('subject');
+    if (subject) {
+      const field = document.getElementById(ids.subject || 'subject');
+      if (field && !field.value) field.value = subject;
+    }
+
+    const show = (kind, message) => {
+      if (!note) return;
+      note.className = 'form-note ' + kind;
+      note.textContent = message;
+    };
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const body = {
+        name: get('name'),
+        email: get('email'),
+        phone: get('phone'),
+        subject: get('subject'),
+        message: get('message')
+      };
+      if (!body.name) return show('is-err', 'Please enter your name.');
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(body.email)) return show('is-err', 'Please enter a valid email address.');
+      if (body.message.length < 5) return show('is-err', 'Please write a short message.');
+
+      const label = submit ? submit.textContent : '';
+      if (submit) { submit.disabled = true; submit.textContent = 'Sending\u2026'; }
+      try {
+        await api('/api/contact', { method: 'POST', body });
+        form.reset();
+        show('is-ok', 'Thank you \u2014 your message has been sent. We will reply shortly.');
+        toast('Message sent', 'ok');
+        if (typeof o.onSent === 'function') o.onSent();
+      } catch (err) {
+        show('is-err', (err && err.message) || 'Could not send your message. Please try again.');
+      } finally {
+        if (submit) { submit.disabled = false; submit.textContent = label || 'Send Message'; }
+      }
+    });
+    return true;
+  }
+
   // Guarded so the module does not throw if ever evaluated outside a browser.
   if (typeof document !== 'undefined') {
     document.addEventListener('DOMContentLoaded', initChrome);
@@ -495,7 +564,7 @@ const App = (() => {
     api, toast, escapeHtml, money, discountPrice, formatDate, stars, initials,
     coverClass, skeletonCards, showEmpty, starsHtml, ratingFor, countUp, wireToolbar,
     creditsReady, photo, creditLine, coverInner, resolveSlug, imgSrc,
-    setupReveal, observeReveal, revealAll
+    setupReveal, observeReveal, revealAll, wireContactForm
   };
 })();
 

@@ -288,6 +288,12 @@
         reader.onload = () => {
           if (target) target.value = reader.result;
           if (preview) preview.innerHTML = '<img class="img-preview" src="' + reader.result + '" alt="">';
+          // The server accepts inline data URLs only up to 400 KB. Warn HERE so
+          // the admin finds out before saving — the old silent 300-char cap
+          // truncated the value and produced a broken (undecodable) image.
+          if (reader.result && reader.result.length > 400 * 1024) {
+            App.toast('This image is too large to embed — paste a URL instead.', 'err');
+          }
         };
         reader.readAsDataURL(file);
       });

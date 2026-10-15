@@ -258,13 +258,56 @@
   }
 
   /**
-   * The "play" button opens the gallery — there is no hosted video, so this is
-   * an honest, useful destination rather than a dead control.
+   * Play button → plays the film INLINE, inside the same `.video-block`.
+   *
+   * Two earlier behaviours were wrong and are deliberately gone:
+   *   1. it used to navigate away to gallery.html (not what "play" means), and
+   *   2. it then opened a full-screen modal — but the video belongs right here
+   *      in the About section, not in a popup.
+   *
+   * The placeholder is swapped for the player in place, so the visitor is never
+   * sent "outside" the page. The iframe is created only on click (nothing loads
+   * from YouTube up front) and is embedded from youtube-nocookie.com (privacy
+   * mode: no tracking cookies until playback starts).
    */
+  const FEATURE_VIDEO = {
+    id: 'j61j9X4xCnA',
+    title: 'Visit Nepal \u2014 Lifetime Experience',
+    author: 'Nepal Tourism Board'
+  };
+
+  function playVideoInline() {
+    const block = document.querySelector('.video-block');
+    const btn = document.getElementById('about-video-btn');
+    if (!block || !btn) return;
+    if (block.querySelector('.video-block__frame iframe')) return; // already playing
+
+    const frame = document.createElement('div');
+    frame.className = 'video-block__frame';
+
+    const iframe = document.createElement('iframe');
+    iframe.src = 'https://www.youtube-nocookie.com/embed/' + FEATURE_VIDEO.id +
+      '?autoplay=1&rel=0&modestbranding=1&playsinline=1';
+    iframe.title = FEATURE_VIDEO.title + ' \u2014 ' + FEATURE_VIDEO.author;
+    iframe.setAttribute('allow', 'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share');
+    iframe.setAttribute('allowfullscreen', '');
+    iframe.setAttribute('referrerpolicy', 'strict-origin-when-cross-origin');
+    frame.appendChild(iframe);
+
+    // NOTE: the button now lives INSIDE `.video-block__poster`, so it is not a
+    // direct child of `.video-block` — `insertBefore(frame, btn)` would throw
+    // NotFoundError. Append instead, and let the `.is-playing` class hide the
+    // poster (which contains the button).
+    block.appendChild(frame);
+    block.classList.add('is-playing');
+    btn.setAttribute('aria-hidden', 'true');
+    btn.setAttribute('tabindex', '-1');
+  }
+
   function wireVideoButton() {
     const btn = document.getElementById('about-video-btn');
     if (!btn) return;
-    btn.addEventListener('click', () => { window.location.href = 'gallery.html'; });
+    btn.addEventListener('click', playVideoInline);
   }
 
   document.addEventListener('DOMContentLoaded', async () => {

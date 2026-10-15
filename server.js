@@ -119,7 +119,10 @@ app.use((_req, res, next) => {
     "font-src 'self'; " +
     "object-src 'none'; " +
     "base-uri 'self'; " +
-    "frame-src https://www.openstreetmap.org; " +
+    // frame-src must allow openstreetmap (contact-page map) AND YouTube, which
+    // the homepage "play" button embeds. Without the YouTube origins the video
+    // modal opens but the player is silently blocked by CSP.
+    "frame-src https://www.openstreetmap.org https://www.youtube.com https://www.youtube-nocookie.com; " +
     "frame-ancestors 'self'"
   );
   next();
@@ -206,7 +209,14 @@ app.use((req, res) => {
 // JSON error handler — never leak stack traces to clients.
 app.use((err, _req, res, _next) => {
   console.error('[error]', err && err.message ? err.message : err);
-  res.status(err.status || 500).json({ error: 'Internal server error' });
+  // Deliberate 4xx errors carry an actionable message for the admin UI (e.g.
+  // "image is too large — use a URL"). Pass those through verbatim so the
+  // visitor sees WHY it failed instead of a generic 500.
+  const status = err.status || err.statusCode || 500;
+  if (status >= 400 && status < 500 && err.expose !== false && err.message) {
+    return res.status(status).json({ error: err.message });
+  }
+  res.status(status).json({ error: 'Internal server error' });
 });
 
 async function start() {

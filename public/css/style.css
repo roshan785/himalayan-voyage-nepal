@@ -130,6 +130,12 @@ img { max-width: 100%; display: block; }
 .topbar__meta { display: flex; flex-wrap: wrap; gap: 4px 20px; }
 .topbar__social { display: flex; gap: 14px; }
 
+/* The meta pin icon had NO size rule, so the inline SVG fell back to its 300x150
+   replaced size (clamped by the 24x24 viewBox to ~210px) and inflated the whole
+   top bar to 252px tall. Size the glyph explicitly and align it with its label. */
+.topbar__meta > * { display: inline-flex; align-items: center; gap: 6px; }
+.topbar__meta svg { width: 14px; height: 14px; flex: none; }
+
 /* Touch: give the small top-bar links and breadcrumb links a comfortable
    minimum hit area so they can be tapped accurately on a phone. */
 @media (pointer: coarse) {
@@ -137,6 +143,15 @@ img { max-width: 100%; display: block; }
   /* Short labels ("X") need a minimum WIDTH too, or the hit area is tiny. */
   .topbar__social a { min-width: 36px; justify-content: center; }
 }
+
+/* The header is injected into the empty `<div id="site-header">`, and a
+   `position: sticky` element can only travel inside its PARENT. That wrapper is
+   exactly as tall as its contents, so the bar used to scroll ~40px and then
+   vanish (measured: gone by scrollY 800). `display: contents` removes the
+   wrapper from the box tree, so the sticky bar's containing block becomes the
+   page and it now stays pinned to the top on every page — the behaviour the
+   reference site's `.navbar-sticky` has. */
+#site-header { display: contents; }
 
 /* NOTE: the frosted-glass blur lives on a ::before pseudo-element, NOT on
    .site-header itself. `backdrop-filter` turns an element into the containing
@@ -1127,6 +1142,38 @@ table.data td.wrap-cell { white-space: normal; min-width: 200px; }
 .cta-horizon h4 { margin: 0; color: #fff; font-size: clamp(1rem, 2.2vw, 1.28rem); }
 .cta-horizon--alt { background: var(--brand); }
 
+/* ── Inline video player (the About play button) ───────────────────────────
+   Clicking play swaps the placeholder for a player IN THE SAME BOX — no popup,
+   no navigating away. The box keeps its natural 16:10 footprint whether it is
+   showing the poster or the video, so the surrounding section never jumps. */
+.video-block__poster { display: block; }
+
+.video-block__frame {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 10;
+  background: #000;
+}
+.video-block__frame iframe {
+  position: absolute; inset: 0;
+  width: 100%; height: 100%;
+  border: 0; display: block;
+}
+/* The player is already inside the rounded, overflow-hidden .video-block, so
+   the poster overlay must not sit on top of it — hide it once playing. */
+.video-block.is-playing .play-btn,
+.video-block.is-playing .video-block__poster { display: none; }
+
+/* Narrow screens are on a tighter layout: use 16:9 (no letterboxing) there. */
+@media (max-width: 640px) {
+  .video-block__frame { aspect-ratio: 16 / 9; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .video-block__frame { transition: none; }
+}
+
+
 /* --- Video / play block --------------------------------------------------- */
 .video-block { position: relative; border-radius: var(--radius); overflow: hidden; box-shadow: var(--shadow-md); }
 .video-block img, .video-block .media {
@@ -1156,7 +1203,30 @@ table.data td.wrap-cell { white-space: normal; min-width: 200px; }
 /* ── Destination detail page (reference parity: 8/4 grid) ───────────────── */
 .detail-grid { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 34px; align-items: start; }
 .detail-main { min-width: 0; }
+/* Sticky sidebar: "Explore Recent Tour Packages" stays put while the long
+   destination article scrolls, exactly like the reference site's
+   `.sidebar-sticky`. The element that must stick is `.detail-side` (the grid
+   cell), NOT `.side-panel` — a sticky child is clamped to its parent's box, and
+   `.detail-side` is only as tall as the panel, so it would scroll away at once.
+   `align-items:start` above is what lets the cell stay shorter than its row;
+   without it the cell stretches to the row height and there is no travel room. */
 .detail-side { min-width: 0; }
+@media (min-width: 901px) {
+  .detail-side {
+    position: sticky;
+    /* 120px clears the 104px sticky site header, leaving a 16px breathing gap. */
+    top: 120px;
+    /* If a very tall panel would not fit under the header, let it scroll
+       internally instead of being cut off. */
+    max-height: calc(100vh - 140px);
+    overflow-y: auto;
+  }
+}
+/* Single-column layouts (<=900px) have no room to stick, and the top-bar/header
+   is shorter there too — so lift the offset and drop the fixed height. */
+@media (max-width: 900px) {
+  .detail-side { position: static; max-height: none; overflow: visible; }
+}
 .detail-hero { aspect-ratio: 21/9; border-radius: 14px; overflow: hidden; margin-bottom: 20px; }
 .detail-title { margin: 0 0 10px; font-size: clamp(1.6rem, 2.2vw + 1rem, 2.4rem); line-height: 1.15; }
 .detail-lead { font-size: 1.03rem; color: var(--body); margin: 0 0 24px; line-height: 1.7; }
@@ -1194,18 +1264,92 @@ table.data td.wrap-cell { white-space: normal; min-width: 200px; }
   .overview-value { padding: 2px 16px 12px; }
 }
 
-/* ── Social icon row + affiliation logo row (reference parity) ───────────── */
+/* ── Social icon row + affiliation logo row (reference parity) ─────────────
+   Each icon is a translucent tile that LIFTS and fills with that network's own
+   brand colour on hover/keyboard-focus.
+
+   WHY EVERY RULE HERE IS SCOPED TO THE CONTAINER (this was a real bug):
+   `.topbar a` and `.site-footer a` also match these anchors, at specificity
+   (0,1,1). The old bare `.social-icon` rule was only (0,1,0), so it LOST the
+   `display` and `font-size` declarations to them. With `display:inline-block`
+   winning over `inline-flex`, the `align-items`/`justify-content` centring had
+   nothing to align — the glyph sat in the tile's TOP-LEFT corner, so the hover
+   fill + shadow appeared offset/outside the logo. Scoping to
+   `.topbar__social` / `.social-links` raises these to (0,2,0), which wins.
+
+   The brand colour comes from the `--social` custom property (each
+   `.social-icon--<network>` overrides it), so ONE hover rule paints all five
+   networks correctly instead of five near-duplicate rules fighting the
+   footer's `a:hover` colour. */
 .social-links { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 4px; }
-.social-icon {
-  width: 38px; height: 38px; display: inline-flex; align-items: center; justify-content: center;
-  border-radius: 10px; background: rgba(255, 255, 255, .1); color: #fff;
-  transition: transform .18s var(--ease), background .18s var(--ease), color .18s var(--ease);
+
+.topbar__social .social-icon,
+.social-links .social-icon {
+  --social: var(--brand);
+  --social-fg: #fff;
+  --social-ring: rgba(255, 255, 255, .10);
+  /* `display:inline-flex` is load-bearing — it is what lets the two centring
+     declarations below actually centre the glyph inside the tile. */
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0;          /* removes the inline baseline gap under the svg */
+  line-height: 1;
+  width: 42px; height: 42px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, .12);
+  color: #e7eefb;
+  border: 1px solid rgba(255, 255, 255, .14);
+  -webkit-tap-highlight-color: transparent;
+  transition: transform .22s var(--ease), background .22s var(--ease), color .22s var(--ease),
+              border-color .22s var(--ease), box-shadow .22s var(--ease);
 }
-.social-icon svg { width: 18px; height: 18px; }
-.social-icon:hover { transform: translateY(-2px); background: #fff; color: #0d2a4d; }
-.topbar__social .social-icon { width: 32px; height: 32px; background: transparent; }
+.topbar__social .social-icon svg,
+.social-links .social-icon svg {
+  display: block;        /* no baseline box around the glyph */
+  width: 19px; height: 19px;
+  margin: auto;          /* belt-and-braces centring, independent of align-* */
+}
+
+.topbar__social .social-icon:hover, .topbar__social .social-icon:focus-visible,
+.social-links .social-icon:hover, .social-links .social-icon:focus-visible {
+  background: var(--social-fill, var(--social));
+  border-color: var(--social);
+  color: var(--social-fg);
+  transform: translateY(-4px) scale(1.06);
+  box-shadow: 0 10px 22px -6px var(--social), 0 0 0 4px var(--social-ring);
+  outline: none;
+}
+
+/* Official brand colours — instantly recognisable on hover. These only set
+   custom properties, so they never collide with the footer/topbar `a` rules. */
+.social-icon--facebook  { --social: #1877f2; }
+.social-icon--instagram { --social: #e1306c;
+                          --social-fill: linear-gradient(45deg, #f09433, #e6683c 25%, #dc2743 50%, #cc2366 75%, #bc1888); }
+.social-icon--youtube   { --social: #ff0000; }
+.social-icon--x         { --social: #000000; --social-ring: rgba(255, 255, 255, .35); }
+.social-icon--tiktok    { --social: #111418; --social-fg: #25f4ee;
+                          --social-ring: rgba(254, 44, 85, .45); }
+
+/* Top-bar variant: denser, borderless tiles so the thin bar stays calm. */
+.topbar__social .social-icon {
+  width: 32px; height: 32px; border-radius: 9px;
+  background: transparent; border-color: transparent; color: #cfe0f6;
+}
 .topbar__social .social-icon svg { width: 16px; height: 16px; }
-.topbar__social .social-icon:hover { background: rgba(255, 255, 255, .18); color: #fff; }
+.topbar__social .social-icon:hover, .topbar__social .social-icon:focus-visible {
+  transform: translateY(-2px) scale(1.08);
+}
+
+/* Touch screens have no hover, so enlarge the tap targets (and keep the bar
+   from growing too tall in the top-bar case). */
+@media (hover: none) {
+  .social-links .social-icon { width: 44px; height: 44px; }
+  .topbar__social .social-icon { width: 36px; height: 36px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .social-icon, .social-icon:hover, .social-icon:focus-visible { transition: none; transform: none; }
+}
 
 .logo-row {
   display: flex; flex-wrap: wrap; align-items: center; gap: 14px; margin: 22px 0 4px;
@@ -1255,15 +1399,257 @@ a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible
 .btn--primary { box-shadow: 0 8px 20px rgba(13, 42, 77, .18); }
 .btn--primary:hover { transform: translateY(-1px); box-shadow: 0 12px 26px rgba(13, 42, 77, .24); }
 
-/* Package detail: booking panel */
-.booking-panel { border: 1px solid var(--line); border-radius: 14px; background: #fff; padding: 20px; box-shadow: 0 14px 34px rgba(15, 42, 82, .08); }
-.booking-panel h3 { margin: 0 0 4px; }
-.booking-panel .price-row { display: flex; align-items: baseline; gap: 10px; margin: 6px 0 14px; }
-.booking-panel .price-row .now { font-size: 1.5rem; font-weight: 800; color: var(--ink); }
-.booking-panel .price-row .was { color: var(--muted); text-decoration: line-through; }
-.booking-panel .form { gap: 10px; }
+/* ══ Package detail: premium booking panel ═══════════════════════════════════
+   Rebuilt as a conversion-focused card: a top banner, a price block, labelled
+   fields with leading icons, inline validation, a spinner button and a trust
+   strip. Everything is self-contained so the panel can be the ONLY thing in the
+   sticky column (the "Need help?" card moved into the article, which doubles the
+   sidebar's sticky travel from ~180px to ~460px). */
+.booking-panel {
+  position: relative;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background:
+    radial-gradient(120% 90% at 100% 0%, #eef5ff 0%, rgba(255, 255, 255, 0) 55%),
+    #fff;
+  padding: 0 20px 18px;
+  box-shadow: 0 20px 48px -18px rgba(15, 42, 82, .28), 0 2px 6px rgba(15, 42, 82, .06);
+  overflow: hidden;
+}
+/* Thin accent bar so the card reads as "premium" at a glance. */
+.booking-panel::before {
+  content: '';
+  position: absolute; inset: 0 0 auto 0; height: 4px;
+  background: linear-gradient(90deg, var(--brand), #1e7be0 45%, var(--accent));
+}
+
+.booking-panel__flag {
+  display: inline-flex; align-items: center; gap: 6px;
+  margin: 12px 0 8px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(255, 138, 0, .13);
+  color: var(--accent-dark);
+  font-size: .74rem; font-weight: 700; letter-spacing: .03em; text-transform: uppercase;
+}
+.booking-panel__flag svg { width: 13px; height: 13px; flex: none; }
+
+.booking-panel__title { margin: 0 0 0; font-size: 1.24rem; line-height: 1.2; letter-spacing: -.01em; }
+.booking-panel__sub { display: none; }
+
+.booking-panel .price-row {
+  display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 10px;
+  margin: 9px 0 11px;
+  padding: 9px 13px;
+  border-radius: 14px;
+  background: linear-gradient(135deg, #f2f7ff, #eaf2ff);
+  border: 1px solid #dbe8fb;
+}
+.booking-panel .price-row .now { font-size: 1.45rem; font-weight: 800; color: var(--brand-dark); letter-spacing: -.02em; }
+.booking-panel .price-row .was { color: var(--muted); text-decoration: line-through; font-size: .95rem; }
+.booking-panel .price-row .badge--ok { background: var(--ok); color: #fff; }
+
+/* --- fields ------------------------------------------------------------- */
+.booking-form { display: grid; gap: 8px; }
+
+.booking-field { display: grid; gap: 4px; }
+.booking-field__label {
+  font-size: .8rem; font-weight: 700; color: var(--ink);
+  letter-spacing: .01em;
+}
+.booking-field__label .req { color: var(--danger); }
+
+/* `position:relative` lets the icon sit inside the field without a wrapper tag. */
+.booking-field__wrap { position: relative; display: block; }
+.booking-field__wrap > input,
+.booking-field__wrap > textarea {
+  width: 100%;
+  font: inherit;
+  font-size: .92rem;
+  color: var(--ink);
+  background: #fbfcfe;
+  border: 1.5px solid var(--line);
+  border-radius: 11px;
+  padding: 9px 12px;
+  transition: border-color .18s var(--ease), box-shadow .18s var(--ease), background .18s var(--ease);
+}
+.booking-field__wrap > input::placeholder,
+.booking-field__wrap > textarea::placeholder { color: #9aa8bd; }
+.booking-field__wrap > input:hover,
+.booking-field__wrap > textarea:hover { border-color: #c9d6ea; }
+.booking-field__wrap > input:focus,
+.booking-field__wrap > textarea:focus {
+  outline: none;
+  background: #fff;
+  border-color: var(--brand);
+  box-shadow: 0 0 0 3.5px rgba(11, 79, 158, .14);
+}
+.booking-field__wrap > textarea { min-height: 54px; resize: vertical; line-height: 1.5; }
+
+/* Icon sits over the field; only pad when an icon is actually present. */
+.booking-field__icon {
+  position: absolute; left: 12px; top: 50%; transform: translateY(-50%);
+  width: 17px; height: 17px; color: #8ba0bd; pointer-events: none;
+}
+.booking-field__icon svg { width: 100%; height: 100%; display: block; }
+.booking-field__wrap:has(.booking-field__icon) > input { padding-left: 38px; }
+/* `:has()` is not everywhere yet — this fallback class is added by the markup. */
+.booking-field__wrap--icon > input { padding-left: 38px; }
+.booking-field__wrap > input:focus ~ .booking-field__icon,
+.booking-field__wrap:focus-within .booking-field__icon { color: var(--brand); }
+
+/* Invalid state + message */
+.booking-field__wrap > input[aria-invalid="true"],
+.booking-field__wrap > textarea[aria-invalid="true"] {
+  border-color: var(--danger);
+  background: #fffafa;
+  box-shadow: 0 0 0 3.5px rgba(197, 48, 48, .10);
+}
+.booking-field__err {
+  margin: 0; min-height: 0;
+  font-size: .76rem; font-weight: 600; color: var(--danger);
+  display: none;
+}
+.booking-field__err:not(:empty) { display: block; }
+
 .booking-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 @media (max-width: 560px) { .booking-grid { grid-template-columns: 1fr; } }
+
+/* --- submit + trust strip ------------------------------------------------ */
+.booking-submit {
+  position: relative; margin-top: 1px; min-height: 45px;
+  font-size: .95rem; font-weight: 700; letter-spacing: .01em;
+}
+.booking-submit__spin {
+  display: none; width: 16px; height: 16px; flex: none;
+  border: 2px solid rgba(255, 255, 255, .45);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: spin .6s linear infinite;
+}
+.booking-submit.is-loading .booking-submit__spin { display: inline-block; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.booking-assure {
+  list-style: none; margin: 1px 0 0; padding: 0;
+  display: flex; flex-wrap: wrap; gap: 4px 13px;
+  font-size: .75rem; color: var(--muted);
+}
+.booking-assure li { display: flex; align-items: center; gap: 6px; }
+.booking-assure svg { width: 14px; height: 14px; flex: none; color: var(--ok); }
+
+.booking-panel .form-note { margin-top: 2px; }
+
+/* Consult card (now inside the article, below the highlights). */
+.consult-card { margin-top: 26px; }
+.consult-card .side-panel__body { padding: 14px 18px 16px; }
+.consult-card p { margin: 0 0 10px; }
+.consult-card .btn svg { width: 15px; height: 15px; flex: none; }
+
+@media (prefers-reduced-motion: reduce) {
+  .booking-submit__spin { animation-duration: 2s; }
+}
+
+/* ── FAQ accordion ──────────────────────────────────────────────────────────
+   Single-open accordion (matching the reference travel site): opening one
+   question closes the previously open one. The panel animates with a height
+   transition; faq.js owns the inline height/opacity while animating, and these
+   rules provide the layout, the answer padding and the reduced-motion opt-out
+   for every value that used to be an inline style. */
+.faq-heading { margin: 0; }
+
+.faq-q {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  text-align: left;
+  background: #fff;
+  border: 0;
+  font: inherit;
+  font-weight: 600;
+  color: var(--ink);
+  padding: 18px 20px;
+  cursor: pointer;
+  transition: background .18s var(--ease);
+}
+.faq-q:hover { background: var(--brand-light); }
+.faq-q:focus-visible { outline: 2px solid var(--brand); outline-offset: -2px; }
+
+.faq-sign {
+  flex: none;
+  color: var(--brand);
+  font-size: 1.3rem;
+  line-height: 1;
+  /* The glyph swaps between + and −; keep it optically centred in a fixed box
+     so the row never shifts when the sign changes. */
+  width: 1.3rem;
+  text-align: center;
+}
+
+/* Panel: faq.js sets inline height/opacity while animating, then clears them so
+   the natural height takes over. `overflow:hidden` is what makes the height
+   animation clip instead of overflowing. */
+.faq-a {
+  overflow: hidden;
+  color: var(--muted);
+  transition: height .28s var(--ease), opacity .28s var(--ease);
+}
+.faq-a__inner { padding: 0 20px 18px; }
+/* `hidden` must win over the block display an open panel would use. */
+.faq-a[hidden] { display: none; }
+
+.faq-item.is-open { border-color: rgba(13, 42, 77, .16); }
+
+@media (prefers-reduced-motion: reduce) {
+  .faq-a { transition: none; }
+}
+
+/* ── Contact popup ("Contact Now" buttons) ──────────────────────────────────
+   Clicking the accent "Contact Now" / "Ask Us" button opens just the enquiry
+   form in a dialog instead of navigating to contact.html, so the visitor keeps
+   the page they were reading. Built on the existing .dialog-backdrop/.dialog
+   primitives (same as the gallery lightbox). */
+.has-contact-modal { overflow: hidden; }
+
+.contact-modal { z-index: 300; }
+
+.contact-modal__panel {
+  padding: 0;
+  width: min(560px, 100%);
+  max-height: min(90vh, 760px);
+  overflow-y: auto;
+  animation: contactModalIn .22s var(--ease);
+}
+@keyframes contactModalIn {
+  from { opacity: 0; transform: translateY(12px) scale(.985); }
+  to   { opacity: 1; transform: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .contact-modal__panel { animation: none; }
+}
+
+.contact-modal__head {
+  display: flex; align-items: flex-start; justify-content: space-between; gap: 14px;
+  padding: 22px 24px 14px;
+  border-bottom: 1px solid var(--line);
+  background: linear-gradient(135deg, #f6faff, #eef4fd);
+}
+.contact-modal__head h3 { margin: 0 0 3px; font-size: 1.24rem; letter-spacing: -.01em; }
+.contact-modal__sub { margin: 0; font-size: .85rem; color: var(--muted); }
+.contact-modal__close { flex: none; }
+
+#contact-modal-form { padding: 18px 24px 22px; }
+#contact-modal-form .field textarea { min-height: 108px; }
+#contact-modal-form .form-note { margin-bottom: 2px; }
+
+@media (max-width: 520px) {
+  .contact-modal { padding: 0; align-items: end; }
+  .contact-modal__panel { width: 100%; max-height: 92vh; border-radius: 16px 16px 0 0; }
+  .contact-modal__head { padding: 18px 16px 12px; }
+  #contact-modal-form { padding: 14px 16px 18px; }
+}
 
 /* ── Admin console: mobile-friendly drawer nav + tap targets ─────────────── */
 .admin-side button { min-height: 42px; }

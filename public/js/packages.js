@@ -99,8 +99,20 @@
 
       const cov = App.coverInner(p);
       const priceRow = p.discount > 0
-        ? `<span class="now">${App.money(finalPrice)}</span><span class="was">${App.money(p.price)}</span><span class="badge badge--ok">-${p.discount}%</span>`
+        ? `<span class="now">${App.money(finalPrice)}</span><span class="was">${App.money(p.price)}</span><span class="badge badge--ok">Save ${p.discount}%</span>`
         : `<span class="now">${App.money(p.price)}</span>`;
+
+      // Small inline icons keep the form readable without an icon font.
+      const ico = {
+        person: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="8" r="3.6"/><path d="M4.5 20c1.4-3.7 4.2-5.4 7.5-5.4s6.1 1.7 7.5 5.4"/></svg>',
+        mail: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="4.5" width="19" height="15" rx="2.5"/><path d="m3 7 9 6 9-6"/></svg>',
+        phone: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2 4.2 2 2 0 0 1 4 2h3a2 2 0 0 1 2 1.7c.1 1 .4 1.9.7 2.8a2 2 0 0 1-.5 2.1L8.1 9.9a16 16 0 0 0 6 6l1.3-1.1a2 2 0 0 1 2.1-.5c.9.3 1.8.6 2.8.7a2 2 0 0 1 1.7 2z"/></svg>',
+        users: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.2"/><path d="M2.5 20c1.2-3.3 3.6-4.8 6.5-4.8s5.3 1.5 6.5 4.8"/><path d="M17 5.5a3 3 0 0 1 0 5.6M18.5 20c-.2-2-.8-3.6-1.8-4.7"/></svg>',
+        calendar: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="3" y="5" width="18" height="16" rx="2.5"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>',
+        chat: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a8 8 0 0 1-8 8H7l-4 3V12a8 8 0 0 1 8-8h2a8 8 0 0 1 8 8z"/></svg>',
+        shield: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v5.5c0 4-2.9 7.4-7 8.5-4.1-1.1-7-4.5-7-8.5V6z"/><path d="m9 12 2 2 4-4"/></svg>',
+        bolt: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M13 2 4.5 13.5H11l-1 8.5L19.5 10H13z"/></svg>'
+      };
 
       box.innerHTML = `
         <nav class="breadcrumbs" aria-label="Breadcrumb"><a href="index.html">Home</a> / <a href="packages.html">Packages</a> / ${App.escapeHtml(p.title)}</nav>
@@ -118,32 +130,93 @@
             <ul class="checklist">${(p.highlights || []).map((h) => `<li>${App.escapeHtml(h)}</li>`).join('') || '<li>Contact us for full inclusions.</li>'}</ul>
             <div style="margin-top:16px;display:flex;gap:10px;flex-wrap:wrap">
               <a class="btn btn--ghost btn--sm" href="packages.html">&larr; All packages</a>
-              <a class="btn btn--ghost btn--sm" href="docs/${encodeURIComponent(p.slug)}.pdf" target="_blank" rel="noopener">📄 Itinerary PDF</a>
+              <a class="btn btn--ghost btn--sm" href="docs/${encodeURIComponent(p.slug)}.pdf" target="_blank" rel="noopener">Itinerary PDF</a>
+            </div>
+            <!-- Consult card lives in the article, not the sticky column, so the
+                 booking panel is the only thing that has to fit there. -->
+            <div class="side-panel consult-card">
+              <h4 class="side-panel__head">Need help deciding?</h4>
+              <div class="side-panel__body">
+                <p class="small muted">Talk to a travel consultant about dates, group sizes and custom itineraries &mdash; we usually reply within one working day.</p>
+                <a class="btn btn--ghost btn--sm btn--block" href="contact.html">${ico.chat} Contact a consultant</a>
+              </div>
             </div>
           </div>
           <aside class="detail-side">
             <div class="booking-panel">
-              <h3>Book this tour</h3>
-              <div class="price-row">${priceRow}<span class="small muted">per person</span></div>
-              <form class="form" id="booking-form" data-slug="${App.escapeHtml(p.slug)}" data-title="${App.escapeHtml(p.title)}">
-                <input type="text" name="name" placeholder="Full name" required>
-                <input type="email" name="email" placeholder="Email address" required>
-                <div class="booking-grid">
-                  <input type="tel" name="phone" placeholder="Phone (optional)">
-                  <input type="number" name="travellers" placeholder="Travellers" min="1" max="50" value="1">
-                </div>
-                <input type="date" name="travel_date" aria-label="Preferred travel date">
-                <textarea name="message" rows="2" placeholder="Anything we should know? (optional)"></textarea>
-                <button class="btn btn--primary btn--block" type="submit">Request Booking</button>
-                <div class="form-note" role="status"></div>
-              </form>
-            </div>
-            <div class="side-panel" style="margin-top:18px">
-              <h4 class="side-panel__head">Need help?</h4>
-              <div class="side-panel__body">
-                <p class="small muted" style="margin:0 0 10px">Talk to a travel consultant about dates, group sizes and custom itineraries.</p>
-                <a class="btn btn--ghost btn--sm btn--block" href="contact.html">Contact Us</a>
+              <div class="booking-panel__flag">${ico.bolt} No payment now</div>
+              <h3 class="booking-panel__title">Book this tour</h3>
+              <p class="booking-panel__sub">Secure your spot &mdash; pay nothing today</p>
+              <div class="price-row">
+                <span class="now">${priceRow}</span>
+                <span class="small muted">per person</span>
               </div>
+
+              <form class="form booking-form" id="booking-form" data-slug="${App.escapeHtml(p.slug)}" data-title="${App.escapeHtml(p.title)}" novalidate>
+                <div class="booking-field">
+                  <label class="booking-field__label" for="bf-name">Full name <span class="req" aria-hidden="true">*</span></label>
+                  <div class="booking-field__wrap booking-field__wrap--icon">
+                    <span class="booking-field__icon" aria-hidden="true">${ico.person}</span>
+                    <input id="bf-name" type="text" name="name" autocomplete="name" placeholder="Broad Technology Hub" required aria-required="true" aria-describedby="bf-name-err">
+                  </div>
+                  <p class="booking-field__err" id="bf-name-err" role="alert"></p>
+                </div>
+
+                <div class="booking-field">
+                  <label class="booking-field__label" for="bf-email">Email address <span class="req" aria-hidden="true">*</span></label>
+                  <div class="booking-field__wrap booking-field__wrap--icon">
+                    <span class="booking-field__icon" aria-hidden="true">${ico.mail}</span>
+                    <input id="bf-email" type="email" name="email" autocomplete="email" inputmode="email" placeholder="you@example.com" required aria-required="true" aria-describedby="bf-email-err">
+                  </div>
+                  <p class="booking-field__err" id="bf-email-err" role="alert"></p>
+                </div>
+
+                <div class="booking-grid">
+                  <div class="booking-field">
+                    <label class="booking-field__label" for="bf-phone">Phone</label>
+                    <div class="booking-field__wrap">
+                      <input id="bf-phone" type="tel" name="phone" autocomplete="tel" inputmode="tel" placeholder="+977 9800000000">
+                    </div>
+                  </div>
+                  <div class="booking-field">
+                    <label class="booking-field__label" for="bf-travellers">Travellers</label>
+                    <div class="booking-field__wrap booking-field__wrap--icon">
+                      <span class="booking-field__icon" aria-hidden="true">${ico.users}</span>
+                      <input id="bf-travellers" type="number" name="travellers" min="1" max="50" step="1" value="1" inputmode="numeric" aria-describedby="bf-travellers-err">
+                    </div>
+                    <p class="booking-field__err" id="bf-travellers-err" role="alert"></p>
+                  </div>
+                </div>
+
+                <div class="booking-field">
+                  <label class="booking-field__label" for="bf-date">Preferred travel date</label>
+                  <div class="booking-field__wrap booking-field__wrap--icon">
+                    <span class="booking-field__icon" aria-hidden="true">${ico.calendar}</span>
+                    <input id="bf-date" type="date" name="travel_date">
+                  </div>
+                  <p class="booking-field__err" id="bf-date-err" role="alert"></p>
+                </div>
+
+                <div class="booking-field">
+                  <label class="booking-field__label" for="bf-message">Anything else?</label>
+                  <div class="booking-field__wrap">
+                    <textarea id="bf-message" name="message" rows="3" placeholder="Dietary needs, room preference, add-ons&hellip;"></textarea>
+                  </div>
+                </div>
+
+                <button class="btn btn--primary btn--block booking-submit" type="submit">
+                  <span class="booking-submit__label">Request Booking</span>
+                  <span class="booking-submit__spin" aria-hidden="true"></span>
+                </button>
+
+                <ul class="booking-assure">
+                  <li>${ico.shield} No payment now</li>
+                  <li>${ico.calendar} Free date changes</li>
+                  <li>${ico.chat} Reply within 1 working day</li>
+                </ul>
+
+                <div class="form-note" role="status" aria-live="polite"></div>
+              </form>
             </div>
           </aside>
         </div>`;
@@ -155,14 +228,78 @@
     }
   }
 
-  /** POST the booking form to the API and give clear inline feedback. */
+  /**
+   * POST the booking form to the API and give clear inline feedback.
+   *
+   * The markup uses `novalidate` so the browser's native bubble does not fight
+   * the styled inline errors: every field is validated here instead, the first
+   * bad one is focused, and the button shows a spinner while the request is in
+   * flight (with a real failure state if the network call rejects).
+   */
   function wireBookingForm() {
     const form = document.getElementById('booking-form');
     if (!form) return;
     const note = form.querySelector('.form-note');
+    const btn = form.querySelector('button[type="submit"]');
+    const label = btn && btn.querySelector('.booking-submit__label');
+
+    // Each field's message element is looked up through an explicit id, so a
+    // name -> id mismatch can never silently swallow an error again
+    // (`travel_date` maps to `bf-date-err`, not `bf-travel_date-err`).
+    const ERR_ID = { name: 'bf-name-err', email: 'bf-email-err', travellers: 'bf-travellers-err', travel_date: 'bf-date-err' };
+    const setError = (name, msg) => {
+      const input = form.elements[name];
+      const err = document.getElementById(ERR_ID[name] || ('bf-' + name + '-err'));
+      if (err) err.textContent = msg || '';
+      if (input) {
+        if (msg) input.setAttribute('aria-invalid', 'true');
+        else input.removeAttribute('aria-invalid');
+      }
+      return !msg;
+    };
+
+    // Clear a field's error as soon as the visitor fixes it.
+    ['name', 'email', 'travellers', 'travel_date'].forEach((name) => {
+      const input = form.elements[name];
+      if (input) input.addEventListener('input', () => setError(name, ''));
+    });
+
+    function validate() {
+      const fv = (n) => String((form.elements[n] || {}).value || '').trim();
+      let ok = true;
+      let firstBad = null;
+      const fail = (n, m) => { setError(n, m); ok = false; if (!firstBad) firstBad = form.elements[n]; };
+
+      if (fv('name').length < 2) fail('name', 'Please enter your full name.');
+      else setError('name', '');
+
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(fv('email'))) fail('email', 'Enter a valid email address.');
+      else setError('email', '');
+
+      const t = Number(fv('travellers'));
+      if (!Number.isInteger(t) || t < 1 || t > 50) fail('travellers', 'Between 1 and 50 travellers.');
+      else setError('travellers', '');
+
+      const d = fv('travel_date');
+      if (d) {
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        if (new Date(d + 'T00:00:00') < today) fail('travel_date', 'Please pick today or a future date.');
+        else setError('travel_date', '');
+      } else setError('travel_date', '');
+
+      if (firstBad) firstBad.focus();
+      return ok;
+    }
+
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
-      const btn = form.querySelector('button[type="submit"]');
+      if (!validate()) {
+        note.className = 'form-note is-err';
+        note.textContent = 'Please fix the highlighted fields and try again.';
+        return;
+      }
+
       const fd = new FormData(form);
       const payload = {
         package_slug: form.dataset.slug,
@@ -174,21 +311,26 @@
         travel_date: String(fd.get('travel_date') || '').trim(),
         message: String(fd.get('message') || '').trim()
       };
+
       note.className = 'form-note';
       note.textContent = '';
       btn.disabled = true;
-      btn.textContent = 'Sending…';
+      btn.classList.add('is-loading');
+      if (label) label.textContent = 'Sending\u2026';
+
       try {
         await App.api('/api/bookings', { method: 'POST', body: payload });
         note.className = 'form-note is-ok';
-        note.textContent = 'Thanks! Your booking request has been received — we will contact you shortly.';
+        note.textContent = 'Thank you! Your booking request is in \u2014 we will contact you shortly to confirm the details.';
         form.reset();
+        ['name', 'email', 'travellers', 'travel_date'].forEach((n) => setError(n, ''));
       } catch (err) {
         note.className = 'form-note is-err';
-        note.textContent = err.message || 'Could not send your request. Please try again.';
+        note.textContent = (err && err.message) || 'Could not send your request. Please try again.';
       } finally {
         btn.disabled = false;
-        btn.textContent = 'Request Booking';
+        btn.classList.remove('is-loading');
+        if (label) label.textContent = 'Request Booking';
       }
     });
   }
