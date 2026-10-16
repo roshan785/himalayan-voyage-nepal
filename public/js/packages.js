@@ -9,7 +9,11 @@
   if (typeof document === 'undefined' || typeof window === 'undefined') return;
   const App = window.App;
 
-  const state = { category: 'all', q: '', sort: '' };
+  // Packages shown per page. Four keeps the 3-column grid on one clean row +
+  // a single card on the second row, and never leaves a lone orphan row.
+  const PER_PAGE = 4;
+
+  const state = { category: 'all', q: '', sort: '', page: 1, items: [] };
 
   function sortItems(items) {
     const mode = state.sort;
@@ -48,25 +52,114 @@
       </article>`;
   }
 
+  /**
+   * Render only the slice of `state.items` that belongs to `state.page`, then
+   * paint the pager. Called on first load and on every page change so the same
+   * list is never re-fetched just to move between pages.
+   */
+  function renderPage() {
+    const grid = document.getElementById('package-grid');
+    const count = document.getElementById('package-count');
+    if (!grid) return;
+    const total = state.items.length;
+    const pages = Math.max(1, Math.ceil(total / PER_PAGE));
+
+    // A filter/search/sort change can push us past the end; clamp instead of
+    // showing an empty grid.
+    if (state.page > pages) state.page = pages;
+    if (state.page < 1) state.page = 1;
+
+    const start = (state.page - 1) * PER_PAGE;
+    const slice = state.items.slice(start, start + PER_PAGE);
+
+    if (!total) {
+      App.showEmpty(grid, 'No packages match your filters.');
+      if (count) count.textContent = '';
+      renderPager(0, 0);
+      return;
+    }
+
+    grid.innerHTML = slice.map(card).join('');
+    // Cards are injected after the page-level reveal observer has run, so
+    // trigger the reveal for the fresh nodes explicitly.
+    App.revealAll(grid);
+
+    if (count) {
+      const from = start + 1;
+      const to = start + slice.length;
+      count.textContent = `Showing ${from}\u2013${to} of ${total} package${total === 1 ? '' : 's'}`;
+    }
+    renderPager(state.page, pages);
+  }
+
+  /**
+   * Compact page-number list with first/last always visible and an ellipsis
+   * when the range is long, e.g. 1 2 3 4 5 … 9  (never more than ~7 buttons).
+   */
+  function pageNumbers(current, pages) {
+    if (pages <= 7) return Array.from({ length: pages }, (_, i) => i + 1);
+    const out = [1];
+    const lo = Math.max(2, current - 1);
+    const hi = Math.min(pages - 1, current + 1);
+    if (lo > 2) out.push('\u2026');
+    for (let i = lo; i <= hi; i += 1) out.push(i);
+    if (hi < pages - 1) out.push('\u2026');
+    out.push(pages);
+    return out;
+  }
+
+  function renderPager(current, pages) {
+    const pager = document.getElementById('package-pager');
+    if (!pager) return;
+    if (pages <= 1) {
+      pager.innerHTML = '';
+      pager.hidden = true;
+      return;
+    }
+    pager.hidden = false;
+
+    const btn = (label, page, { active = false, disabled = false, aria = '' } = {}) =>
+      `<button type="button" class="pager__btn${active ? ' is-active' : ''}" ` +
+      `data-page="${page}"${disabled ? ' disabled' : ''} ` +
+      `${aria ? `aria-label="${aria}" ` : ''}` +
+      `${active ? 'aria-current="page" ' : ''}>${label}</button>`;
+
+    const parts = [btn('\u2190 Prev', current - 1, { disabled: current <= 1, aria: 'Previous page' })];
+    for (const n of pageNumbers(current, pages)) {
+      if (n === '\u2026') parts.push('<span class="pager__gap" aria-hidden="true">\u2026</span>');
+      else parts.push(btn(String(n), n, { active: n === current, aria: `Page ${n}` }));
+    }
+    parts.push(btn('Next \u2192', current + 1, { disabled: current >= pages, aria: 'Next page' }));
+    pager.innerHTML = `<nav class="pager" aria-label="Package pages">${parts.join('')}</nav>`;
+  }
+
+  function goToPage(page) {
+    const pages = Math.max(1, Math.ceil(state.items.length / PER_PAGE));
+    const next = Math.min(Math.max(1, page), pages);
+    if (next === state.page) return;
+    state.page = next;
+    renderPage();
+    // Keep the grid in view after a page jump so the change is obvious.
+    const grid = document.getElementById('package-grid');
+    if (grid) grid.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
   async function loadList() {
     const grid = document.getElementById('package-grid');
     const count = document.getElementById('package-count');
-    App.skeletonCards(grid, 6);
+    App.skeletonCards(grid, PER_PAGE);
     try {
       const params = new URLSearchParams();
       if (state.category && state.category !== 'all') params.set('category', state.category);
       if (state.q) params.set('q', state.q);
       const data = await App.api('/api/packages' + (params.toString() ? '?' + params.toString() : ''));
-      const items = sortItems(data.items || []);
-      grid.innerHTML = items.map(card).join('');
-      if (!items.length) {
-        App.showEmpty(grid, 'No packages match your filters.');
-        if (count) count.textContent = '';
-      } else if (count) {
-        count.textContent = `${items.length} package${items.length === 1 ? '' : 's'} found`;
-      }
+      state.items = sortItems(data.items || []);
+      state.page = 1;
+      renderPage();
     } catch (err) {
       App.showEmpty(grid, 'Could not load packages.');
+      if (count) count.textContent = '';
+      renderPager(0, 0);
       App.toast(err.message, 'err');
     }
   }
@@ -95,6 +188,8 @@
       if (count) count.classList.add('hidden');
       const listingHead = document.getElementById('package-listing-head');
       if (listingHead) listingHead.classList.add('hidden');
+      const pager = document.getElementById('package-pager');
+      if (pager) pager.classList.add('hidden');
       document.title = p.title + ' | Himalayan Voyage Nepal';
 
       const cov = App.coverInner(p);
@@ -358,6 +453,14 @@
     const sort = document.getElementById('package-sort');
     if (sort) {
       sort.addEventListener('change', () => { state.sort = sort.value; loadList(); });
+    }
+    const pager = document.getElementById('package-pager');
+    if (pager) {
+      pager.addEventListener('click', (e) => {
+        const btn = e.target.closest('.pager__btn');
+        if (!btn || btn.disabled) return;
+        goToPage(Number(btn.dataset.page) || 1);
+      });
     }
   }
 

@@ -632,6 +632,24 @@ img { max-width: 100%; display: block; }
 .tab:hover { border-color: var(--brand); color: var(--brand); }
 .tab.is-active { background: var(--brand); border-color: var(--brand); color: #fff; }
 
+/* Pagination — numbered pages with prev/next, matching the pill .tab look. */
+.pager-wrap { margin-top: 34px; }
+.pager { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; align-items: center; }
+.pager__btn {
+  min-width: 42px; padding: .5rem .8rem; border-radius: 999px;
+  border: 1px solid var(--line); background: #fff; color: var(--body);
+  font: inherit; font-weight: 600; font-size: .88rem; line-height: 1.2;
+  cursor: pointer; transition: all .18s var(--ease);
+}
+.pager__btn:hover:not(:disabled) { border-color: var(--brand); color: var(--brand); }
+.pager__btn.is-active { background: var(--brand); border-color: var(--brand); color: #fff; cursor: default; }
+.pager__btn:disabled { opacity: .45; cursor: not-allowed; }
+.pager__btn:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
+.pager__gap { color: var(--muted, #94a3b8); padding: 0 .2rem; user-select: none; }
+@media (max-width: 620px) {
+  .pager__btn { min-width: 38px; padding: .45rem .6rem; font-size: .82rem; }
+}
+
 .cta-band {
   position: relative;
   overflow: hidden;
