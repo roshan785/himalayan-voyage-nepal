@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Travel Shop | Himalayan Voyage Nepal</title>
+  <meta name="description" content="Shop curated Nepal and international travel packages. Search, filter and book online with secure checkout.">
+  <link rel="stylesheet" href="css/style.css?v=shop1">
+</head>
+<body>
+  <div id="site-header"></div>
+
+  <main id="main">
+    <section class="hero hero--slim">
+      <div class="wrap"><div class="hero__inner">
+        <div class="breadcrumbs"><a href="index.html">Home</a> / Travel Shop</div>
+        <span class="eyebrow" style="color:#ffd08a">Travel Shop</span>
+        <h1>Book your journey online</h1>
+        <p class="lead">Browse, add to cart and check out securely. Every price is confirmed by our team before your trip is finalised.</p>
+      </div></div>
+    </section>
+
+    <section class="section">
+      <div class="wrap">
+        <div id="shop-toolbar" class="shop-toolbar">
+          <div class="field" style="flex:1;min-width:220px">
+            <input type="search" id="shop-search" placeholder="Search packages or destinations&hellip;" aria-label="Search shop">
+          </div>
+          <div class="toolbar__sort">
+            <label for="shop-sort">Sort by</label>
+            <select id="shop-sort" aria-label="Sort packages">
+              <option value="">Recommended</option>
+              <option value="price-asc">Price (low to high)</option>
+              <option value="price-desc">Price (high to low)</option>
+              <option value="rating">Top rated</option>
+            </select>
+          </div>
+          <a class="btn btn--ghost btn--sm" href="cart.html">View Cart <span class="cart-inline-badge" data-cart-count hidden>0</span></a>
+        </div>
+
+        <div class="tabs" id="shop-categories" style="margin-bottom:24px">
+          <button class="tab is-active" data-cat="all">All</button>
+          <button class="tab" data-cat="international">International</button>
+          <button class="tab" data-cat="domestic">Domestic</button>
+          <button class="tab" data-cat="historical">Historical</button>
+          <button class="tab" data-cat="religious">Religious</button>
+          <button class="tab" data-cat="trekking">Trekking</button>
+        </div>
+
+        <p class="muted small" id="shop-count"></p>
+        <div class="grid grid--3" id="shop-grid"></div>
+        <div id="shop-pager" class="pager-wrap" hidden></div>
+      </div>
+    </section>
+
+    <section class="section--tight">
+      <div class="wrap">
+        <div class="cta-band reveal">
+          <div><h2>Prefer a tailored trip?</h2><p>We'll design a package around your dates, group size and budget.</p></div>
+          <a class="btn btn--accent" href="contact.html">Request a Quote</a>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <div id="site-footer"></div>
+
+  <script src="js/layout.js?v=shop1"></script>
+  <script src="js/main.js?v=shop1"></script>
+  <script src="js/cart-store.js?v=shop1"></script>
+  <script src="js/shop.js?v=shop1"></script>
+</body>
+</html>

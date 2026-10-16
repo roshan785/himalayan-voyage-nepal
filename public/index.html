@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Himalayan Voyage Nepal | Travel & Tour Agency</title>
   <meta name="description" content="Himalayan Voyage Nepal — tours, trekking, adventure activities and customized holiday packages across Nepal and international destinations.">
-  <link rel="stylesheet" href="css/style.css?v=9daaa45d">
+  <link rel="stylesheet" href="css/style.css?v=shop1">
 </head>
 <body>
   <div id="site-header"></div>
@@ -209,6 +209,44 @@
       </div>
     </section>
 
+    <!-- Build Your Trip — interactive planner entry into the Travel Shop -->
+    <section class="section section--alt" id="build-your-trip">
+      <div class="wrap">
+        <div class="sec-head">
+          <span class="eyebrow">Plan Your Journey</span>
+          <h2>Build Your Trip</h2>
+          <p>Tell us how you like to travel and we&rsquo;ll jump you straight to the right packages &mdash; then book online in minutes.</p>
+        </div>
+        <form class="trip-builder" id="trip-builder">
+          <div class="trip-builder__field">
+            <label for="tb-category">Trip type</label>
+            <select id="tb-category">
+              <option value="all">Any type</option>
+              <option value="international">International</option>
+              <option value="domestic">Domestic</option>
+              <option value="historical">Historical</option>
+              <option value="religious">Religious</option>
+              <option value="trekking">Trekking</option>
+            </select>
+          </div>
+          <div class="trip-builder__field">
+            <label for="tb-travellers">Travellers</label>
+            <input id="tb-travellers" type="number" min="1" max="50" value="2">
+          </div>
+          <div class="trip-builder__field">
+            <label for="tb-date">Travel date</label>
+            <input id="tb-date" type="date">
+          </div>
+          <div class="trip-builder__field trip-builder__field--wide">
+            <label for="tb-destination">Destination or keyword</label>
+            <input id="tb-destination" type="text" placeholder="e.g. Pokhara, Thailand, trekking&hellip;">
+          </div>
+          <button class="btn btn--primary trip-builder__cta" type="submit">Find Packages</button>
+        </form>
+        <p class="center" style="margin-top:18px"><a class="btn btn--ghost btn--sm" href="shop.html">Or browse the full Travel Shop &rarr;</a></p>
+      </div>
+    </section>
+
     <!-- CTA band -->
     <section class="section--tight">
       <div class="wrap">
@@ -279,8 +317,8 @@
 
   <div id="site-footer"></div>
 
-  <script src="js/layout.js?v=81425e0f"></script>
+  <script src="js/layout.js?v=shop1"></script>
   <script src="js/main.js?v=21cf0ff2"></script>
-  <script src="js/home.js?v=3e378afc"></script>
+  <script src="js/home.js?v=shop1"></script>
 </body>
 </html>

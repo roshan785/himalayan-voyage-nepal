@@ -650,6 +650,119 @@ img { max-width: 100%; display: block; }
   .pager__btn { min-width: 38px; padding: .45rem .6rem; font-size: .82rem; }
 }
 
+/* ==========================================================================
+   Travel Shop — cart, checkout, order confirmation, trip builder
+   ========================================================================== */
+
+/* Cart link + badge in the header */
+.cart-link {
+  position: relative; display: inline-flex; align-items: center; gap: 6px;
+  color: var(--brand); font-weight: 600; font-size: .88rem;
+  text-decoration: none; padding: .35rem .5rem; border-radius: 999px;
+}
+.cart-link:hover { color: var(--brand-dark); background: var(--brand-light); }
+.cart-link svg { width: 20px; height: 20px; }
+.cart-badge, .cart-inline-badge {
+  display: inline-grid; place-items: center; min-width: 20px; height: 20px;
+  padding: 0 6px; border-radius: 999px; background: var(--accent); color: #201400;
+  font-size: .72rem; font-weight: 800; line-height: 1;
+}
+.cart-badge { position: absolute; top: -4px; right: -4px; }
+.cart-badge.is-empty { display: none; }
+.cart-inline-badge { margin-left: 6px; }
+
+/* Shop toolbar */
+.shop-toolbar {
+  display: flex; flex-wrap: wrap; gap: 12px; align-items: center;
+  justify-content: space-between; margin-bottom: 22px;
+}
+.shop-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+
+/* Cart lines */
+.checkout-grid { display: grid; grid-template-columns: 1.6fr 1fr; gap: 28px; align-items: start; }
+@media (max-width: 900px) { .checkout-grid { grid-template-columns: 1fr; } }
+.checkout-heading { margin: 26px 0 12px; font-size: 1.1rem; color: var(--ink); }
+.checkout-heading:first-child { margin-top: 0; }
+.cart-line {
+  display: grid; grid-template-columns: 84px 1fr auto; gap: 14px; align-items: center;
+  background: var(--card); border: 1px solid var(--line); border-radius: var(--radius);
+  padding: 12px; margin-bottom: 12px; box-shadow: var(--shadow-sm);
+}
+.cart-line__cover { width: 84px; height: 64px; border-radius: var(--radius-sm); overflow: hidden; }
+.cart-line__cover .cover__img { width: 100%; height: 100%; object-fit: cover; }
+.cart-line__body h4 { margin: 0 0 4px; font-size: .98rem; color: var(--ink); }
+.cart-line__qty { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
+.qty-btn {
+  width: 30px; height: 30px; border-radius: 8px; border: 1px solid var(--line);
+  background: #fff; font-size: 1.05rem; font-weight: 700; cursor: pointer; color: var(--brand);
+}
+.qty-btn:hover { border-color: var(--brand); }
+.link-btn {
+  border: 0; background: none; color: var(--danger); font: inherit; font-size: .82rem;
+  cursor: pointer; text-decoration: underline; padding: 0 4px;
+}
+.cart-line__total { font-weight: 800; color: var(--ink); white-space: nowrap; }
+
+/* Summary card */
+.summary-card {
+  background: var(--card); border: 1px solid var(--line); border-radius: var(--radius);
+  padding: 20px; box-shadow: var(--shadow-md); position: sticky; top: 90px;
+}
+.summary-card h3 { margin: 0 0 14px; font-size: 1.05rem; }
+.summary-row { display: flex; justify-content: space-between; padding: 7px 0; border-bottom: 1px dashed var(--line); }
+.summary-row:last-of-type { border-bottom: 0; }
+.summary-row--save { color: var(--ok); }
+.summary-row--total { font-weight: 800; color: var(--ink); font-size: 1.1rem; border-top: 1px solid var(--line); margin-top: 4px; padding-top: 10px; }
+.summary-card .btn { margin-top: 14px; }
+
+/* Payment method picker */
+.pay-methods { display: grid; gap: 10px; margin-bottom: 8px; }
+.pay-method {
+  display: flex; align-items: center; gap: 10px; padding: 12px 14px;
+  border: 1.5px solid var(--line); border-radius: var(--radius-sm); cursor: pointer;
+  background: #fff; transition: border-color .15s var(--ease);
+}
+.pay-method:hover { border-color: var(--brand); }
+.pay-method input { accent-color: var(--brand); }
+.pay-method__label { font-weight: 600; color: var(--ink); }
+
+/* Form helpers reused by checkout */
+.form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+@media (max-width: 620px) { .form-row { grid-template-columns: 1fr; } }
+.field-err { color: var(--danger); font-size: .82rem; margin: 4px 0 0; min-height: 1em; }
+.req { color: var(--danger); }
+
+/* Order confirmation */
+.order-card {
+  background: var(--card); border: 1px solid var(--line); border-radius: var(--radius);
+  padding: 24px; box-shadow: var(--shadow-md); max-width: 820px; margin: 0 auto;
+}
+.order-card__head { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; margin-bottom: 18px; }
+.order-card__head h2 { margin: 0 0 4px; font-size: 1.25rem; }
+.order-totals { max-width: 320px; margin-left: auto; margin-top: 16px; }
+
+/* Homepage "Build Your Trip" */
+.trip-builder {
+  display: grid; grid-template-columns: repeat(4, 1fr) auto; gap: 14px; align-items: end;
+  background: var(--card); border: 1px solid var(--line); border-radius: var(--radius);
+  padding: 22px; box-shadow: var(--shadow-md);
+}
+.trip-builder__field { display: flex; flex-direction: column; gap: 6px; }
+.trip-builder__field--wide { grid-column: span 1; }
+.trip-builder__field label { font-size: .82rem; font-weight: 600; color: var(--muted); }
+.trip-builder__field input, .trip-builder__field select {
+  padding: .6rem .8rem; border: 1px solid var(--line); border-radius: var(--radius-sm);
+  font: inherit; font-size: .9rem; background: #fff;
+}
+.trip-builder__cta { white-space: nowrap; align-self: end; }
+@media (max-width: 980px) {
+  .trip-builder { grid-template-columns: 1fr 1fr; }
+  .trip-builder__cta { grid-column: 1 / -1; }
+}
+@media (max-width: 620px) {
+  .trip-builder { grid-template-columns: 1fr; }
+}
+
 .cta-band {
   position: relative;
   overflow: hidden;
@@ -1721,3 +1834,15 @@ a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible
   outline: 3px solid #ffd166;
   outline-offset: 2px;
 }
+
+/* Admin order-detail modal (Travel Shop orders view) */
+.admin-modal {
+  position: fixed; inset: 0; z-index: 1000; display: none;
+  background: rgba(20, 33, 61, .5); overflow-y: auto; padding: 40px 16px;
+}
+.admin-modal.is-open { display: block; }
+.admin-modal__box {
+  background: #fff; border-radius: var(--radius); max-width: 720px; margin: 0 auto;
+  padding: 24px; box-shadow: var(--shadow-lg);
+}
+.admin-modal__box h3 { margin-top: 0; }

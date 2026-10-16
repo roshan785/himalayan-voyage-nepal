@@ -17,6 +17,11 @@ const {
   verifyPassword, issueToken, requireAuth, findUserByEmail, TOKEN_COOKIE
 } = require('./auth');
 const { notifyBooking } = require('./notify');
+const {
+  recomputeTotals, createOrder, getOrder, getOrderByReference,
+  listOrders, updateOrder, orderStats, newReference
+} = require('./commerce');
+const { listProviders, startPayment, verifyPayment } = require('./payments');
 
 const SITE = {
   name: 'Himalayan Voyage Nepal',
@@ -48,6 +53,19 @@ function parseJsonArray(value) {
 function num(value, fallback = 0) {
   const n = Number(value);
   return Number.isFinite(n) ? n : fallback;
+}
+
+/**
+ * Partially mask an email for a public confirmation page: keep the first
+ * character of the local part and the full domain, e.g. `roshan@x.com` ->
+ * `r*****@x.com`. A shared order link must not expose the full address.
+ */
+function maskEmail(value) {
+  const email = String(value == null ? '' : value);
+  const at = email.indexOf('@');
+  if (at < 1) return email ? '\u2022\u2022\u2022' : '';
+  const first = email[0];
+  return first + '\u2022'.repeat(Math.max(3, Math.min(8, at - 1))) + email.slice(at);
 }
 
 /** Trim and length-cap a string field. */
@@ -495,11 +513,117 @@ function publicRouter() {
     res.json({ user });
   });
 
+  /* ── Travel Shop: orders + payments ─────────────────────────────────────
+     The customer posts ONLY a slug + qty per line. Every price and total is
+     recomputed from the packages table inside recomputeTotals(), so a tampered
+     cart cannot change what is charged. */
+
+  router.get('/payments/providers', async (_req, res) => {
+    res.json({ items: listProviders() });
+  });
+
+  router.post('/orders', async (req, res) => {
+    const body = req.body || {};
+    const name = str(body.name, 150);
+    const email = str(body.email, 200);
+    if (!name) return bad(res, 'Your name is required');
+    if (!isEmail(email)) return bad(res, 'A valid email address is required');
+
+    const cart = Array.isArray(body.items) ? body.items : [];
+    if (!cart.length) return bad(res, 'Your cart is empty');
+    if (cart.length > 20) return bad(res, 'Too many different packages in one order');
+
+    // Server-side pricing — the only source of truth for money.
+    const totals = await recomputeTotals(cart);
+
+    const order = await createOrder({
+      reference: newReference(),
+      status: 'pending',
+      payment_status: 'unpaid',
+      payment_method: '',
+      currency: 'NPR',
+      subtotal: totals.subtotal,
+      discount_total: totals.discount_total,
+      total: totals.total,
+      travellers: totals.travellers,
+      travel_date: str(body.travel_date, 40),
+      customer_name: name,
+      customer_email: email,
+      customer_phone: str(body.phone, 40),
+      notes: str(body.notes, 4000),
+      items: totals.items
+    });
+
+    // Best-effort admin notification, reusing the existing notify module.
+    try {
+      await notifyBooking({
+        package_title: totals.items.map((i) => i.title).join(', ').slice(0, 200),
+        name, email, phone: str(body.phone, 40), travellers: totals.travellers,
+        travel_date: str(body.travel_date, 40),
+        message: `Order ${order.reference} \u2014 ${totals.items.length} item(s), total Rs. ${totals.total}`
+      });
+    } catch (_e) { /* notification is never allowed to fail an order */ }
+
+    res.status(201).json({ ok: true, order });
+  });
+
+  router.get('/orders/:reference', async (req, res) => {
+    const order = await getOrderByReference(req.params.reference);
+    if (!order) return res.status(404).json({ error: 'Order not found' });
+    // The reference acts as an unguessable capability (base36 time + 4 random
+    // chars); email/phone are partially masked so a shared confirmation page
+    // never leaks the full contact record.
+    res.json({ order: { ...order, customer_email: maskEmail(order.customer_email) } });
+  });
+
+  router.post('/orders/:reference/pay', async (req, res) => {
+    const order = await getOrderByReference(req.params.reference);
+    if (!order) return res.status(404).json({ error: 'Order not found' });
+    if (order.payment_status === 'paid') return bad(res, 'This order is already paid');
+    if (order.status === 'cancelled') return bad(res, 'This order has been cancelled');
+
+    const method = str((req.body || {}).method, 20) || 'mock';
+    const result = await startPayment(method, order);
+    if (!result.ok) {
+      return res.status(400).json({ error: result.message || 'Payment could not be started', reason: result.reason });
+    }
+    if (result.ok && method !== 'bank') {
+      await updateOrder(order.id, { payment_method: method });
+    }
+    res.json({ ok: true, payment: result, order: { reference: order.reference, total: order.total } });
+  });
+
+  router.post('/orders/:reference/verify', async (req, res) => {
+    const order = await getOrderByReference(req.params.reference);
+    if (!order) return res.status(404).json({ error: 'Order not found' });
+    const evidence = req.body || {};
+    const method = order.payment_method || str(evidence.method, 20) || 'mock';
+    const result = await verifyPayment(method, order, evidence);
+    if (!result.ok) {
+      await updateOrder(order.id, { payment_status: 'failed' });
+      return res.status(400).json({ error: 'Payment verification failed', reason: result.reason });
+    }
+    // Amount cross-check: a valid signature on the WRONG amount is still a fraud
+    // attempt, so the verified amount must equal the stored order total.
+    if (result.amount !== undefined && Number(result.amount) !== Number(order.total)) {
+      await updateOrder(order.id, { payment_status: 'failed' });
+      return res.status(400).json({ error: 'Payment amount does not match the order total' });
+    }
+    if (result.paid) {
+      // A completed online payment IS a confirmed order — keep the workflow
+      // status consistent with the manual "mark paid" path (which also
+      // confirms). Otherwise a paid order would sit in 'pending' forever.
+      const updated = await updateOrder(order.id, {
+        payment_status: 'paid', status: 'confirmed', payment_ref: result.providerRef || ''
+      });
+      return res.json({ ok: true, paid: true, order: { reference: updated.reference, payment_status: updated.payment_status, status: updated.status } });
+    }
+    // Bank transfer / not-yet-confirmed: leave it unpaid for an admin to confirm.
+    res.json({ ok: true, paid: false, reason: result.reason || 'awaiting-confirmation' });
+  });
+
   return router;
 }
-
-// ---------------------------------------------------------------------------
-// Admin API router (all routes require a valid JWT)
 // ---------------------------------------------------------------------------
 
 function adminRouter() {
@@ -553,6 +677,56 @@ function adminRouter() {
 
   router.get('/subscribers', async (_req, res) => {
     res.json({ items: await all('SELECT id, email, created_at FROM subscribers ORDER BY id DESC') });
+  });
+
+  /* ── Travel Shop admin: orders + payment status ─────────────────────── */
+
+  router.get('/orders', async (req, res) => {
+    const items = await listOrders({
+      status: str(req.query.status, 20),
+      payment_status: str(req.query.payment, 20),
+      q: str(req.query.q, 80)
+    });
+    res.json({ items, stats: await orderStats() });
+  });
+
+  router.get('/orders/:id', async (req, res) => {
+    const order = await getOrder(num(req.params.id, 0));
+    if (!order) return res.status(404).json({ error: 'Order not found' });
+    res.json({ item: order });
+  });
+
+  /** Update an order's workflow status and/or its payment status. */
+  router.patch('/orders/:id', async (req, res) => {
+    const body = req.body || {};
+    const patch = {};
+    if (body.status !== undefined) patch.status = str(body.status, 20);
+    if (body.payment_status !== undefined) patch.payment_status = str(body.payment_status, 20);
+    if (body.payment_ref !== undefined) patch.payment_ref = str(body.payment_ref, 120);
+    const updated = await updateOrder(num(req.params.id, 0), patch);
+    if (!updated) return res.status(404).json({ error: 'Order not found' });
+    res.json({ item: updated, id: updated.id });
+  });
+
+  /**
+   * Mark an order paid after a manual/bank confirmation. Kept separate from the
+   * generic PATCH so the intent is explicit and auditable, and so a stray PATCH
+   * cannot silently flip payment state without this deliberate endpoint.
+   */
+  router.post('/orders/:id/mark-paid', async (req, res) => {
+    const body = req.body || {};
+    const ref = str(body.payment_ref, 120);
+    const updated = await updateOrder(num(req.params.id, 0), {
+      payment_status: 'paid',
+      status: 'confirmed',
+      payment_ref: ref || ('MANUAL-' + Date.now().toString(36).toUpperCase())
+    });
+    if (!updated) return res.status(404).json({ error: 'Order not found' });
+    res.json({ ok: true, item: updated });
+  });
+
+  router.get('/orders-stats', async (_req, res) => {
+    res.json(await orderStats());
   });
 
   return router;

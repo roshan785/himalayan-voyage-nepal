@@ -310,11 +310,36 @@
     btn.addEventListener('click', playVideoInline);
   }
 
+  /**
+   * "Build Your Trip" planner: a lightweight form that forwards the visitor's
+   * choices to the shop (or straight to the cart when they pick a traveller
+   * count for a specific category). No server state — it is a guided entry into
+   * the existing shop search rather than a second, competing booking flow.
+   */
+  function wireTripBuilder() {
+    const form = document.getElementById('trip-builder');
+    if (!form) return;
+    form.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const cat = (document.getElementById('tb-category') || {}).value || 'all';
+      const q = String((document.getElementById('tb-destination') || {}).value || '').trim();
+      const travellers = Math.max(1, Math.min(50, parseInt((document.getElementById('tb-travellers') || {}).value, 10) || 1));
+      const date = (document.getElementById('tb-date') || {}).value || '';
+      const params = new URLSearchParams();
+      if (cat && cat !== 'all') params.set('category', cat);
+      if (q) params.set('q', q);
+      params.set('travellers', String(travellers));
+      if (date) params.set('date', date);
+      window.location.href = 'shop.html?' + params.toString();
+    });
+  }
+
   document.addEventListener('DOMContentLoaded', async () => {
     // Load the photo credit manifest first so covers render with real images.
     await App.creditsReady();
     wireHeroSlider();
     wireVideoButton();
+    wireTripBuilder();
     loadDestinations();
     loadPackages('all');
     loadServices();

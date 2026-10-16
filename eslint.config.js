@@ -25,6 +25,10 @@ module.exports = [
         // Browser
         window: 'readonly',
         document: 'readonly',
+        CustomEvent: 'readonly',
+        FormData: 'readonly',
+        FileReader: 'readonly',
+        Blob: 'readonly',
         getComputedStyle: 'readonly',
         location: 'readonly',
         fetch: 'readonly',

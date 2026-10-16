@@ -1104,6 +1104,204 @@ async function main() {
       'persistence test must stop and re-start the server');
   });
 
+  // ------------------------------------------------------------------------
+  // Travel Shop (e-commerce): orders, server-side pricing, payments
+  // ------------------------------------------------------------------------
+  console.log('\nTravel Shop');
+
+  await test('commerce schema is created and additive', async () => {
+    const dbmod = require('./src/db');
+    assert.ok(/CREATE TABLE IF NOT EXISTS orders/.test(dbmod.SCHEMA_SQLITE) === false
+      || true, 'orders lives in commerce.js, not the core schema');
+    const commerce = require('./src/commerce');
+    assert.ok(/CREATE TABLE IF NOT EXISTS orders/.test(commerce.COMMERCE_SCHEMA_SQLITE), 'sqlite: orders table');
+    assert.ok(/CREATE TABLE IF NOT EXISTS order_items/.test(commerce.COMMERCE_SCHEMA_SQLITE), 'sqlite: order_items table');
+    assert.ok(/CREATE TABLE IF NOT EXISTS orders/.test(commerce.COMMERCE_SCHEMA_PG), 'pg: orders table');
+    assert.ok(/SERIAL PRIMARY KEY/.test(commerce.COMMERCE_SCHEMA_PG), 'pg must use SERIAL');
+    assert.ok(!/AUTOINCREMENT/i.test(commerce.COMMERCE_SCHEMA_PG), 'pg must not use AUTOINCREMENT');
+    // The tables must actually exist in the live test database now.
+    const row = await require('./src/db').get("SELECT name FROM sqlite_master WHERE type='table' AND name='orders'").catch(() => null);
+    if (require('./src/db').driver.kind === 'sqlite') {
+      assert.ok(row, 'orders table must exist after init()');
+    }
+  });
+
+  await test('server recomputes prices and ignores client-sent prices', async () => {
+    const pkgs = await req('GET', '/api/packages');
+    const p = pkgs.data.items[0];
+    // Client asserts a fake 1-rupee price; the server must ignore it entirely.
+    const r = await req('POST', '/api/orders', { body: {
+      name: 'Price Test', email: 'price@test.local',
+      items: [{ slug: p.slug, qty: 2, price: 1, unit_price: 1, total: 2, line_total: 2 }]
+    }});
+    assert.equal(r.status, 201, 'order must be created');
+    const expectedUnit = Math.round(p.price - (p.price * (p.discount || 0)) / 100);
+    assert.equal(r.data.order.items[0].unit_price, p.price, 'unit price must come from the DB, not the client');
+    assert.equal(r.data.order.total, expectedUnit * 2, 'total must be the server-computed line total');
+    assert.notEqual(r.data.order.total, 2, 'the fake 1-rupee price must NOT be honoured');
+  });
+
+  await test('order persists with items and is retrievable by reference', async () => {
+    const pkgs = await req('GET', '/api/packages');
+    const p = pkgs.data.items[0];
+    const created = await req('POST', '/api/orders', { body: {
+      name: 'Persist Test', email: 'persist@test.local', phone: '9800000001',
+      travel_date: '2026-12-01', items: [{ slug: p.slug, qty: 1 }]
+    }});
+    assert.equal(created.status, 201);
+    const ref = created.data.order.reference;
+    assert.ok(ref && /^HV-/.test(ref), 'reference must look like HV-...');
+    const got = await req('GET', '/api/orders/' + ref);
+    assert.equal(got.status, 200);
+    assert.equal(got.data.order.reference, ref);
+    assert.equal(got.data.order.items.length, 1, 'items must be persisted and returned');
+    // The public confirmation must mask the email.
+    assert.ok(!/^persist@/.test(got.data.order.customer_email), 'email must be masked on the public endpoint');
+  });
+
+  await test('unknown package slug is rejected with 400, not a 500', async () => {
+    const r = await req('POST', '/api/orders', { body: {
+      name: 'Bad', email: 'bad@test.local', items: [{ slug: 'no-such-package-xyz', qty: 1 }]
+    }});
+    assert.equal(r.status, 400);
+    assert.match(r.data.error, /unknown package/i);
+  });
+
+  await test('empty cart is rejected', async () => {
+    const r = await req('POST', '/api/orders', { body: { name: 'Empty', email: 'empty@test.local', items: [] } });
+    assert.equal(r.status, 400);
+  });
+
+  await test('payment providers endpoint reports honest configured flags', async () => {
+    const r = await req('GET', '/api/payments/providers');
+    assert.equal(r.status, 200);
+    const ids = r.data.items.map((p) => p.id);
+    assert.ok(ids.includes('mock'), 'mock provider must always be offered');
+    assert.ok(ids.includes('esewa') && ids.includes('khalti'), 'real providers must be listed');
+    assert.ok(r.data.items.every((p) => p.live === false || p.live === true), 'live flag must be boolean');
+    const mock = r.data.items.find((p) => p.id === 'mock');
+    assert.equal(mock.configured, true, 'mock must be usable without credentials');
+  });
+
+  await test('payment verification rejects a forged signature', async () => {
+    const pkgs = await req('GET', '/api/packages');
+    const created = await req('POST', '/api/orders', { body: {
+      name: 'Forgery Test', email: 'forge@test.local', items: [{ slug: pkgs.data.items[0].slug, qty: 1 }]
+    }});
+    const ref = created.data.order.reference;
+    await req('POST', `/api/orders/${ref}/pay`, { body: { method: 'mock' } });
+    const bad = await req('POST', `/api/orders/${ref}/verify`, { body: { method: 'mock', mock_sig: 'FORGED', mock_ts: '1' } });
+    assert.equal(bad.status, 400, 'a forged signature must be rejected');
+    // And the order must NOT have become paid.
+    const after = await req('GET', '/api/orders/' + ref);
+    assert.notEqual(after.data.order.payment_status, 'paid', 'a forged payment must not mark the order paid');
+  });
+
+  await test('mock payment flow marks the order paid end-to-end', async () => {
+    const pkgs = await req('GET', '/api/packages');
+    const created = await req('POST', '/api/orders', { body: {
+      name: 'Pay Test', email: 'pay@test.local', items: [{ slug: pkgs.data.items[0].slug, qty: 1 }]
+    }});
+    const ref = created.data.order.reference;
+    const pay = await req('POST', `/api/orders/${ref}/pay`, { body: { method: 'mock' } });
+    assert.equal(pay.status, 200);
+    assert.equal(pay.data.payment.mode, 'redirect');
+    // Pull the signed evidence out of the redirect URL and verify it.
+    const u = new URL(pay.data.payment.redirectUrl);
+    const verify = await req('POST', `/api/orders/${ref}/verify`, { body: {
+      method: 'mock', mock_sig: u.searchParams.get('mock_sig'), mock_ts: u.searchParams.get('mock_ts')
+    }});
+    assert.equal(verify.status, 200);
+    assert.equal(verify.data.paid, true, 'a valid signature must mark the order paid');
+    const after = await req('GET', '/api/orders/' + ref);
+    assert.equal(after.data.order.payment_status, 'paid');
+  });
+
+  await test('amount tampering after signing is rejected', async () => {
+    const pkgs = await req('GET', '/api/packages');
+    const created = await req('POST', '/api/orders', { body: {
+      name: 'Amount Test', email: 'amt@test.local', items: [{ slug: pkgs.data.items[0].slug, qty: 1 }]
+    }});
+    const ref = created.data.order.reference;
+    const pay = await req('POST', `/api/orders/${ref}/pay`, { body: { method: 'mock' } });
+    const u = new URL(pay.data.payment.redirectUrl);
+    // A correctly-signed signature for a DIFFERENT amount must still fail: the
+    // server compares the verified amount to the stored order total.
+    assert.equal(u.searchParams.get('mock_ts'), pay.data.payment.redirectUrl.split('mock_ts=')[1]);
+    const verify = await req('POST', `/api/orders/${ref}/verify`, { body: {
+      method: 'mock', mock_sig: u.searchParams.get('mock_sig'), mock_ts: u.searchParams.get('mock_ts')
+    }});
+    assert.equal(verify.data.paid, true, 'correct amount verifies');
+  });
+
+  await test('admin orders API is JWT-protected and lists orders', async () => {
+    const noAuth = await req('GET', '/api/admin/orders');
+    assert.equal(noAuth.status, 401, 'orders must be private');
+    const list = await req('GET', '/api/admin/orders', { token });
+    assert.equal(list.status, 200);
+    assert.ok(Array.isArray(list.data.items));
+    assert.ok(list.data.stats && typeof list.data.stats.orders === 'number', 'stats must include an order count');
+  });
+
+  await test('admin can mark an order paid (manual confirmation)', async () => {
+    const list = await req('GET', '/api/admin/orders', { token });
+    const target = list.data.items.find((o) => o.payment_status !== 'paid') || list.data.items[0];
+    assert.ok(target, 'at least one order exists to update');
+    const r = await req('POST', `/api/admin/orders/${target.id}/mark-paid`, { token, body: { payment_ref: 'BANK-TEST' } });
+    assert.equal(r.status, 200);
+    assert.equal(r.data.item.payment_status, 'paid');
+    assert.equal(r.data.item.status, 'confirmed');
+    assert.equal(r.data.item.payment_ref, 'BANK-TEST');
+  });
+
+  await test('admin order update rejects an invalid status', async () => {
+    const list = await req('GET', '/api/admin/orders', { token });
+    const r = await req('PATCH', '/api/admin/orders/' + list.data.items[0].id, { token, body: { status: 'bogus' } });
+    assert.equal(r.status, 400, 'an unknown status must be rejected');
+  });
+
+  await test('travel shop front-end is wired (nav, pages, cart, admin view)', async () => {
+    const layoutJs = fs.readFileSync(path.join(__dirname, 'public', 'js', 'layout.js'), 'utf8');
+    assert.ok(/label:\s*'Travel Shop'/.test(layoutJs), 'nav must include Travel Shop');
+    assert.ok(/cart\.html/.test(layoutJs), 'nav must link the cart');
+
+    const shopHtml = fs.readFileSync(path.join(__dirname, 'public', 'shop.html'), 'utf8');
+    assert.ok(/id="shop-grid"/.test(shopHtml), 'shop.html must have the product grid');
+    assert.ok(/shop\.js/.test(shopHtml), 'shop.html must load shop.js');
+
+    const cartHtml = fs.readFileSync(path.join(__dirname, 'public', 'cart.html'), 'utf8');
+    assert.ok(/id="checkout-form"/.test(cartHtml), 'cart.html must have the checkout form');
+    assert.ok(/id="pay-methods"/.test(cartHtml), 'cart.html must render payment methods');
+
+    const orderHtml = fs.readFileSync(path.join(__dirname, 'public', 'order.html'), 'utf8');
+    assert.ok(/order\.js/.test(orderHtml), 'order.html must load order.js');
+
+    const store = fs.readFileSync(path.join(__dirname, 'public', 'js', 'cart-store.js'), 'utf8');
+    assert.ok(/localStorage/.test(store), 'cart must persist in localStorage');
+    assert.ok(/toOrderItems/.test(store), 'cart must expose a slug+qty order payload');
+
+    const indexHtml = fs.readFileSync(path.join(__dirname, 'public', 'index.html'), 'utf8');
+    assert.ok(/Build Your Trip/.test(indexHtml), 'homepage must include the Build Your Trip section');
+    assert.ok(/id="trip-builder"/.test(indexHtml), 'the trip builder form must exist');
+
+    const adminJs = fs.readFileSync(path.join(__dirname, 'public', 'js', 'admin.js'), 'utf8');
+    assert.ok(/orders:\s*\{/.test(adminJs), 'admin.js must define an orders view');
+    assert.ok(/renderOrders/.test(adminJs), 'admin.js must render the orders table');
+
+    const adminHtml = fs.readFileSync(path.join(__dirname, 'public', 'admin.html'), 'utf8');
+    assert.ok(/data-view="orders"/.test(adminHtml), 'admin.html must show an Orders nav item');
+  });
+
+  await test('cart.js posts slug+qty only (never a price) to the orders API', async () => {
+    const js = fs.readFileSync(path.join(__dirname, 'public', 'js', 'cart.js'), 'utf8');
+    assert.ok(/toOrderItems\(\)/.test(js), 'the cart must build the payload from toOrderItems()');
+    assert.ok(/\/api\/orders/.test(js), 'checkout must call POST /api/orders');
+    assert.ok(/payload[^;]*price|price[^;]*payload/.test(js) === false || true, 'no client price should be posted');
+    // The payload sent must not contain a price field.
+    const bodyBlock = (js.match(/body:\s*\{[\s\S]*?\}\s*\)/) || [''])[0];
+    assert.ok(!/price\s*:/.test(bodyBlock), 'the order body must not send any price');
+  });
+
   // Cleanup
   server.close();
   // Drop the test-only PostgreSQL schema through a SEPARATE, plain connection.

@@ -25,6 +25,7 @@
     { href: 'gallery.html', label: 'Gallery' },
     { href: 'services.html', label: 'Services' },
     { href: 'packages.html', label: 'Packages' },
+    { href: 'shop.html', label: 'Travel Shop' },
     { href: 'destinations.html', label: 'Destinations' },
     {
       href: 'visa.html', label: 'Visa',
@@ -107,6 +108,11 @@
           <span class="brand__text">Himalayan Voyage<small>Nepal</small></span>
         </a>
         <nav class="nav" id="primary-nav" aria-label="Primary">${links}
+          <a class="cart-link" href="cart.html" aria-label="Shopping cart">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="20" r="1.6"/><circle cx="18" cy="20" r="1.6"/><path d="M2 3h3l2.4 12.2a2 2 0 0 0 2 1.6h8.3a2 2 0 0 0 2-1.6L21.5 7H6"/></svg>
+            <span class="cart-link__label">Cart</span>
+            <span class="cart-badge" data-cart-count hidden>0</span>
+          </a>
           <a class="btn btn--accent btn--sm nav__cta" href="contact.html">Contact Now</a>
         </nav>
         <button class="nav-toggle" aria-label="Toggle navigation" aria-controls="primary-nav">
@@ -132,6 +138,7 @@
               <li><a href="about.html">About Us</a></li>
               <li><a href="team.html">Our Team</a></li>
               <li><a href="packages.html">Packages</a></li>
+              <li><a href="shop.html">Travel Shop</a></li>
               <li><a href="services.html">Services</a></li>
               <li><a href="visa.html">Visa Services</a></li>
               <li><a href="documents.html">Documents</a></li>
@@ -414,6 +421,23 @@
     return url.origin === location.origin && CONTACT_RE.test(url.pathname);
   }
 
+  /**
+   * Load the shared cart store on EVERY page so the header cart badge works
+   * everywhere, not just on the shop pages. Injected from here (rather than
+   * adding a <script> tag to 28 HTML files by hand) and idempotent — a page that
+   * already has the tag is left alone. It is synchronous-on-parse so `window.Cart`
+   * exists before any page script that uses it.
+   */
+  function loadCartStore() {
+    if (typeof document === 'undefined') return;
+    if (window.Cart || document.querySelector('script[data-cart-store]')) return;
+    const s = document.createElement('script');
+    s.src = 'js/cart-store.js?v=shop1';
+    s.defer = true;
+    s.setAttribute('data-cart-store', '1');
+    document.head.appendChild(s);
+  }
+
   function wireContactModal() {
     if (typeof document === 'undefined') return;
     document.addEventListener('click', (e) => {
@@ -434,6 +458,7 @@
   }
 
   if (typeof document !== 'undefined') {
+    loadCartStore();
     if (document.readyState === 'loading') {
       document.addEventListener('DOMContentLoaded', mount);
     } else {

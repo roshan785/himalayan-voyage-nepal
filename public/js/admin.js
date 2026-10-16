@@ -192,6 +192,13 @@
       ],
       columns: ['id', 'package_title', 'name', 'travellers', 'status']
     },
+    orders: {
+      title: 'Orders',
+      // Rendered by a dedicated function (renderOrders) because orders carry
+      // line items + a payment workflow that the generic table cannot express.
+      custom: true,
+      columns: ['id', 'reference', 'customer_name', 'total', 'payment_status', 'status']
+    },
     testimonials: {
       title: 'Testimonials',
       endpoint: '/testimonials',
@@ -493,6 +500,154 @@
     URL.revokeObjectURL(a.href);
   }
 
+  /**
+   * Travel Shop order management: filter by status/payment, see line items,
+   * change workflow + payment status, and mark an order paid after a manual or
+   * bank confirmation. All money is the SERVER-computed total (never re-derived
+   * from the client) so the figures shown are exactly what will be charged.
+   */
+  async function renderOrders() {
+    const viewEl = document.getElementById('view');
+    viewEl.innerHTML = '<div class="skeleton" style="height:60px"></div>';
+    let data;
+    try {
+      data = await adminApi('/orders');
+    } catch (err) {
+      viewEl.innerHTML = `<div class="empty">Could not load orders. ${App.escapeHtml(err.message)}</div>`;
+      return;
+    }
+    const items = data.items || [];
+    const stats = data.stats || {};
+    const state = { q: '', status: 'all', payment: 'all' };
+
+    const payBadge = (p) => {
+      const map = { paid: 'badge--ok', unpaid: 'badge--off', failed: 'badge--err', refunded: 'badge' };
+      return '<span class="badge ' + (map[p] || '') + '">' + App.escapeHtml(p || '\u2014') + '</span>';
+    };
+    const statCard = (label, value) => `<div class="admin-card"><b>${value}</b><span>${label}</span></div>`;
+
+    viewEl.innerHTML = `
+      <div class="admin-cards">
+        ${statCard('Orders', stats.orders || 0)}
+        ${statCard('Paid', stats.paidOrders || 0)}
+        ${statCard('Unpaid', stats.unpaidOrders || 0)}
+        ${statCard('Revenue (Rs.)', App.money(stats.revenue || 0).replace('Rs. ', ''))}
+      </div>
+      <div class="toolbar" style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin:14px 0">
+        <input id="or-q" type="search" placeholder="Search reference, name or email&hellip;" style="flex:1;min-width:200px;padding:9px 12px;border:1px solid #d5dbe4;border-radius:9px">
+        <select id="or-status" style="padding:9px 12px;border:1px solid #d5dbe4;border-radius:9px">
+          <option value="all">All statuses</option>
+          <option value="pending">Pending</option>
+          <option value="confirmed">Confirmed</option>
+          <option value="completed">Completed</option>
+          <option value="cancelled">Cancelled</option>
+        </select>
+        <select id="or-payment" style="padding:9px 12px;border:1px solid #d5dbe4;border-radius:9px">
+          <option value="all">All payments</option>
+          <option value="paid">Paid</option>
+          <option value="unpaid">Unpaid</option>
+          <option value="failed">Failed</option>
+          <option value="refunded">Refunded</option>
+        </select>
+      </div>
+      <div id="or-summary" class="muted small" style="margin-bottom:8px"></div>
+      <div id="or-table"></div>`;
+
+    const shown = () => {
+      const q = state.q.trim().toLowerCase();
+      return items.filter((r) => {
+        if (state.status !== 'all' && r.status !== state.status) return false;
+        if (state.payment !== 'all' && r.payment_status !== state.payment) return false;
+        if (!q) return true;
+        return [r.reference, r.customer_name, r.customer_email, r.customer_phone]
+          .some((v) => String(v || '').toLowerCase().includes(q));
+      });
+    };
+
+    const paint = () => {
+      const list = shown();
+      document.getElementById('or-summary').textContent = `Showing ${list.length} of ${items.length} orders`;
+      const rows = list.map((r) => `
+        <tr>
+          <td><b>${App.escapeHtml(r.reference)}</b></td>
+          <td>${App.escapeHtml(r.customer_name || '\u2014')}<div class="muted small">${App.escapeHtml(r.customer_email || '')}</div></td>
+          <td>${r.item_count}</td>
+          <td>${App.money(r.total)}</td>
+          <td>${payBadge(r.payment_status)}</td>
+          <td>${App.escapeHtml(r.status)}</td>
+          <td>${App.formatDate(r.created_at)}</td>
+          <td><div class="row-actions">
+            <button class="icon-btn" data-view="${r.id}">View</button>
+            ${r.payment_status === 'paid' ? '' : `<button class="icon-btn" data-paid="${r.id}">Mark paid</button>`}
+          </div></td>
+        </tr>`).join('');
+      const box = document.getElementById('or-table');
+      box.innerHTML = `
+        <div class="table-wrap"><table class="data">
+          <thead><tr><th>Reference</th><th>Customer</th><th>Items</th><th>Total</th><th>Payment</th><th>Status</th><th>Placed</th><th>Actions</th></tr></thead>
+          <tbody>${rows || '<tr><td colspan="8" class="muted">No orders match.</td></tr>'}</tbody>
+        </table></div>`;
+      box.querySelectorAll('[data-view]').forEach((b) => b.addEventListener('click', () => orderDetail(b.dataset.view)));
+      box.querySelectorAll('[data-paid]').forEach((b) => b.addEventListener('click', async () => {
+        if (!confirm('Mark this order as PAID (manual/bank confirmation)?')) return;
+        try {
+          await adminApi('/orders/' + b.dataset.paid + '/mark-paid', { method: 'POST', body: {} });
+          App.toast('Order marked paid', 'ok');
+          renderOrders();
+        } catch (err) { App.toast(err.message, 'err'); }
+      }));
+    };
+
+    document.getElementById('or-q').addEventListener('input', (e) => { state.q = e.target.value; paint(); });
+    document.getElementById('or-status').addEventListener('change', (e) => { state.status = e.target.value; paint(); });
+    document.getElementById('or-payment').addEventListener('change', (e) => { state.payment = e.target.value; paint(); });
+    paint();
+  }
+
+  /** Modal-free order detail: expand the line items + status controls inline. */
+  async function orderDetail(id) {
+    let order;
+    try {
+      order = (await adminApi('/orders/' + id)).item;
+    } catch (err) { App.toast(err.message, 'err'); return; }
+    const lines = (order.items || []).map((it) => `
+      <tr><td>${App.escapeHtml(it.title)}</td><td>${it.qty}</td><td>${App.money(it.unit_price)}</td><td>${App.money(it.line_total)}</td></tr>`).join('');
+    const html = `
+      <h3>Order ${App.escapeHtml(order.reference)}</h3>
+      <p class="small muted">${App.escapeHtml(order.customer_name)} \u2022 ${App.escapeHtml(order.customer_email)} \u2022 ${App.escapeHtml(order.customer_phone || '\u2014')}</p>
+      <div class="table-wrap"><table class="data">
+        <thead><tr><th>Package</th><th>Qty</th><th>Unit</th><th>Line</th></tr></thead>
+        <tbody>${lines}</tbody>
+      </table></div>
+      <p style="margin-top:10px"><b>Total: ${App.money(order.total)}</b> \u2022 Payment: ${App.escapeHtml(order.payment_status)} \u2022 Method: ${App.escapeHtml(order.payment_method || '\u2014')} \u2022 Ref: ${App.escapeHtml(order.payment_ref || '\u2014')}</p>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:12px">
+        <select id="od-status" style="padding:9px 12px;border:1px solid #d5dbe4;border-radius:9px">
+          ${['pending', 'confirmed', 'completed', 'cancelled'].map((s) => `<option value="${s}" ${s === order.status ? 'selected' : ''}>${s}</option>`).join('')}
+        </select>
+        <button class="btn btn--primary btn--sm" id="od-save">Save status</button>
+        <button class="btn btn--ghost btn--sm" id="od-close">Close</button>
+      </div>`;
+    let modal = document.getElementById('order-detail-modal');
+    if (!modal) {
+      modal = document.createElement('div');
+      modal.id = 'order-detail-modal';
+      modal.className = 'admin-modal';
+      document.body.appendChild(modal);
+    }
+    modal.innerHTML = `<div class="admin-modal__box">${html}</div>`;
+    modal.classList.add('is-open');
+    document.getElementById('od-close').addEventListener('click', () => modal.classList.remove('is-open'));
+    document.getElementById('od-save').addEventListener('click', async () => {
+      const status = document.getElementById('od-status').value;
+      try {
+        await adminApi('/orders/' + id, { method: 'PATCH', body: { status } });
+        App.toast('Status updated', 'ok');
+        modal.classList.remove('is-open');
+        renderOrders();
+      } catch (err) { App.toast(err.message, 'err'); }
+    });
+  }
+
   async function renderContacts() {
     const viewEl = document.getElementById('view');
     viewEl.innerHTML = '<div class="skeleton" style="height:60px"></div>';
@@ -583,6 +738,8 @@
       }
     } else if (view === 'bookings') {
       await renderBookings();
+    } else if (view === 'orders') {
+      await renderOrders();
     } else if (view === 'contacts') {
       await renderContacts();
     } else if (view === 'subscribers') {

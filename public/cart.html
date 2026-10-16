@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Your Cart &amp; Checkout | Himalayan Voyage Nepal</title>
+  <meta name="description" content="Review your selected travel packages and complete a secure booking with safe payment.">
+  <link rel="stylesheet" href="css/style.css?v=shop1">
+</head>
+<body>
+  <div id="site-header"></div>
+
+  <main id="main">
+    <section class="hero hero--slim">
+      <div class="wrap"><div class="hero__inner">
+        <div class="breadcrumbs"><a href="index.html">Home</a> / <a href="shop.html">Travel Shop</a> / Cart</div>
+        <h1>Your cart &amp; checkout</h1>
+        <p class="lead">Review your packages, then confirm your booking. No payment is taken until you choose a method.</p>
+      </div></div>
+    </section>
+
+    <section class="section">
+      <div class="wrap">
+        <div id="cart-empty" class="empty hidden">
+          Your cart is empty. <a href="shop.html">Browse the Travel Shop</a> to add packages.
+        </div>
+
+        <div id="cart-layout" class="checkout-grid hidden">
+          <div class="checkout-main">
+            <h2 class="checkout-heading">Your packages</h2>
+            <div id="cart-lines"></div>
+
+            <h2 class="checkout-heading">Traveller details</h2>
+            <form id="checkout-form" class="form" novalidate>
+              <div class="form-row">
+                <div class="field">
+                  <label for="co-name">Full name <span class="req">*</span></label>
+                  <input id="co-name" name="name" type="text" autocomplete="name" required>
+                  <p class="field-err" data-err="name" role="alert"></p>
+                </div>
+                <div class="field">
+                  <label for="co-email">Email <span class="req">*</span></label>
+                  <input id="co-email" name="email" type="email" autocomplete="email" required>
+                  <p class="field-err" data-err="email" role="alert"></p>
+                </div>
+              </div>
+              <div class="form-row">
+                <div class="field">
+                  <label for="co-phone">Phone</label>
+                  <input id="co-phone" name="phone" type="tel" autocomplete="tel">
+                </div>
+                <div class="field">
+                  <label for="co-date">Preferred travel date</label>
+                  <input id="co-date" name="travel_date" type="date">
+                  <p class="field-err" data-err="travel_date" role="alert"></p>
+                </div>
+              </div>
+              <div class="field">
+                <label for="co-notes">Notes (optional)</label>
+                <textarea id="co-notes" name="notes" rows="3" placeholder="Dietary needs, room preference, add-ons&hellip;"></textarea>
+              </div>
+            </form>
+
+            <h2 class="checkout-heading">Payment method</h2>
+            <div id="pay-methods" class="pay-methods"></div>
+            <p class="small muted" id="pay-note"></p>
+          </div>
+
+          <aside class="checkout-side">
+            <div class="summary-card">
+              <h3>Order summary</h3>
+              <div id="cart-summary"></div>
+              <button class="btn btn--primary btn--block" id="checkout-btn" type="button">Place order</button>
+              <p class="small muted" style="margin-top:10px">Prices are confirmed by our team before your booking is finalised.</p>
+              <div class="form-note" id="checkout-note" role="status" aria-live="polite"></div>
+            </div>
+          </aside>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <div id="site-footer"></div>
+
+  <script src="js/layout.js?v=shop1"></script>
+  <script src="js/main.js?v=shop1"></script>
+  <script src="js/cart-store.js?v=shop1"></script>
+  <script src="js/cart.js?v=shop1"></script>
+</body>
+</html>

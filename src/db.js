@@ -437,6 +437,10 @@ async function init() {
   await driver.applySchema();
   const { ensureDestinationColumns } = require('./db-migrate');
   await ensureDestinationColumns(driver);
+  // Travel Shop tables (orders + order_items). Additive + idempotent; it only
+  // creates NEW tables and never alters the ones above.
+  const { ensureCommerceSchema } = require('./commerce');
+  await ensureCommerceSchema(driver);
   return driver.kind;
 }
 
