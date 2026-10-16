@@ -16,12 +16,13 @@ const { all, get, run, slugify, driver } = require('./db');
 const {
   verifyPassword, issueToken, requireAuth, findUserByEmail, TOKEN_COOKIE
 } = require('./auth');
-const { notifyBooking } = require('./notify');
+const { notifyBooking, notifyCustomer } = require('./notify');
 const {
   recomputeTotals, createOrder, getOrder, getOrderByReference,
   listOrders, updateOrder, orderStats, newReference
 } = require('./commerce');
 const { listProviders, startPayment, verifyPayment } = require('./payments');
+const { writeInvoice } = require('./invoice');
 
 const SITE = {
   name: 'Himalayan Voyage Nepal',
@@ -616,10 +617,29 @@ function publicRouter() {
       const updated = await updateOrder(order.id, {
         payment_status: 'paid', status: 'confirmed', payment_ref: result.providerRef || ''
       });
+      // Best-effort customer receipt (no-op when email is unconfigured).
+      try { await notifyCustomer(updated); } catch (_e) { /* never blocks payment */ }
       return res.json({ ok: true, paid: true, order: { reference: updated.reference, payment_status: updated.payment_status, status: updated.status } });
     }
     // Bank transfer / not-yet-confirmed: leave it unpaid for an admin to confirm.
     res.json({ ok: true, paid: false, reason: result.reason || 'awaiting-confirmation' });
+  });
+
+  /** Downloadable invoice/receipt PDF for an order (server-rendered). */
+  router.get('/orders/:reference/invoice.pdf', async (req, res) => {
+    const order = await getOrderByReference(req.params.reference);
+    if (!order) return res.status(404).json({ error: 'Order not found' });
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition',
+      `inline; filename="invoice-${String(order.reference).replace(/[^A-Za-z0-9-]/g, '')}.pdf"`);
+    try {
+      await writeInvoice(order, res);
+    } catch (err) {
+      // Headers may already be sent once streaming started; only a pre-stream
+      // failure can still produce a clean JSON error.
+      if (!res.headersSent) return res.status(500).json({ error: 'Could not generate the invoice' });
+      req.socket.destroy();
+    }
   });
 
   return router;

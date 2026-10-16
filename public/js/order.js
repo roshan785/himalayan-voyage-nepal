@@ -40,6 +40,13 @@
           </div>
           ${badge}
         </div>
+        <div class="order-timeline">
+          ${['pending', 'confirmed', 'completed'].map((s, i) => {
+            const reached = order.status === 'completed' ? true : (order.status === 'confirmed' ? i <= 1 : i === 0);
+            return `<span class="order-timeline__step${reached ? ' is-done' : ''}">${s}</span>`;
+          }).join('<span class="order-timeline__sep">\u2192</span>')}
+          ${order.status === 'cancelled' ? '<span class="order-timeline__step is-cancelled">cancelled</span>' : ''}
+        </div>
         <div class="table-wrap"><table class="data">
           <thead><tr><th>Package</th><th>Travellers</th><th>Unit</th><th>Line total</th></tr></thead>
           <tbody>${rows}</tbody>
@@ -55,7 +62,10 @@
                <p class="small muted">Complete your payment to confirm this booking.</p>
                <button class="btn btn--primary" id="pay-now-btn" type="button">Pay now</button>
              </div>`}
-        <div style="margin-top:18px"><a class="btn btn--ghost btn--sm" href="shop.html">&larr; Continue shopping</a></div>
+        <div style="margin-top:18px;display:flex;gap:10px;flex-wrap:wrap">
+          <a class="btn btn--ghost btn--sm" href="/api/orders/${encodeURIComponent(order.reference)}/invoice.pdf" target="_blank" rel="noopener">Download Invoice (PDF)</a>
+          <a class="btn btn--ghost btn--sm" href="shop.html">&larr; Continue shopping</a>
+        </div>
       </div>`;
 
     const payBtn = document.getElementById('pay-now-btn');

@@ -48,6 +48,11 @@
           <div class="card__foot">
             ${priceHtml}
             <div class="shop-actions">
+              <div class="shop-qty">
+                <button type="button" class="qty-btn" data-shop-dec="${App.escapeHtml(p.slug)}" aria-label="Fewer travellers">&minus;</button>
+                <input type="number" class="shop-qty__input" id="qty-${App.escapeHtml(p.slug)}" value="1" min="1" max="50" aria-label="Travellers">
+                <button type="button" class="qty-btn" data-shop-inc="${App.escapeHtml(p.slug)}" aria-label="More travellers">+</button>
+              </div>
               <button class="btn btn--primary btn--sm" data-add="${App.escapeHtml(p.slug)}">Add to Cart</button>
               <a class="btn btn--ghost btn--sm" href="packages.html?slug=${encodeURIComponent(p.slug)}">Details</a>
             </div>
@@ -170,17 +175,30 @@
     // Add-to-cart uses event delegation so freshly rendered cards are covered.
     const grid = document.getElementById('shop-grid');
     if (grid && Cart) {
+      const qtyOf = (slug) => {
+        const inp = document.getElementById('qty-' + slug);
+        return Math.max(1, Math.min(50, parseInt(inp && inp.value, 10) || 1));
+      };
+      const setQtyInput = (slug, v) => {
+        const inp = document.getElementById('qty-' + slug);
+        if (inp) inp.value = String(Math.max(1, Math.min(50, v)));
+      };
       grid.addEventListener('click', (e) => {
-        const btn = e.target.closest('[data-add]');
-        if (!btn) return;
-        const slug = btn.dataset.add;
+        const inc = e.target.closest('[data-shop-inc]');
+        const dec = e.target.closest('[data-shop-dec]');
+        const add = e.target.closest('[data-add]');
+        if (inc) { setQtyInput(inc.dataset.shopInc, qtyOf(inc.dataset.shopInc) + 1); return; }
+        if (dec) { setQtyInput(dec.dataset.shopDec, qtyOf(dec.dataset.shopDec) - 1); return; }
+        if (!add) return;
+        const slug = add.dataset.add;
         const pkg = state.items.find((p) => p.slug === slug);
         if (!pkg) return;
-        Cart.add({ slug: pkg.slug, title: pkg.title, price: pkg.price, discount: pkg.discount, image: pkg.image }, 1);
-        btn.textContent = 'Added \u2713';
-        btn.disabled = true;
-        setTimeout(() => { btn.textContent = 'Add to Cart'; btn.disabled = false; }, 1200);
-        App.toast(`${pkg.title} added to cart`, 'ok');
+        const qty = qtyOf(slug);
+        Cart.add({ slug: pkg.slug, title: pkg.title, price: pkg.price, discount: pkg.discount, image: pkg.image }, qty);
+        add.textContent = `Added ${qty} \u2713`;
+        add.disabled = true;
+        setTimeout(() => { add.textContent = 'Add to Cart'; add.disabled = false; }, 1200);
+        App.toast(`${pkg.title} \u00d7 ${qty} added to cart`, 'ok');
       });
     }
   }
@@ -188,6 +206,19 @@
   document.addEventListener('DOMContentLoaded', async () => {
     if (!App) return;
     await App.creditsReady();
+    // Track-order lookup (shop page): navigate to the order page by reference.
+    const trackBtn = document.getElementById('track-btn');
+    if (trackBtn) {
+      trackBtn.addEventListener('click', () => {
+        const ref = String((document.getElementById('track-ref') || {}).value || '').trim();
+        const msg = document.getElementById('track-msg');
+        if (!/^HV-[A-Z0-9-]+$/i.test(ref)) {
+          if (msg) msg.textContent = 'Enter a valid reference, e.g. HV-MVB59TZS-1WAO.';
+          return;
+        }
+        window.location.href = 'order.html?ref=' + encodeURIComponent(ref.toUpperCase());
+      });
+    }
     // Honour incoming filters from the homepage "Build Your Trip" form and from
     // footer links (?category=..., ?q=...), so the guided entry lands pre-filtered.
     const params = new URLSearchParams(location.search);

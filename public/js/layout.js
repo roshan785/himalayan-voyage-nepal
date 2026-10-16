@@ -432,7 +432,7 @@
     if (typeof document === 'undefined') return;
     if (window.Cart || document.querySelector('script[data-cart-store]')) return;
     const s = document.createElement('script');
-    s.src = 'js/cart-store.js?v=shop1';
+    s.src = 'js/cart-store.js?v=shop2';
     s.defer = true;
     s.setAttribute('data-cart-store', '1');
     document.head.appendChild(s);

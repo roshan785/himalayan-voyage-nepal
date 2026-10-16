@@ -1302,6 +1302,54 @@ async function main() {
     assert.ok(!/price\s*:/.test(bodyBlock), 'the order body must not send any price');
   });
 
+  await test('invoice PDF endpoint returns a real PDF for an order', async () => {
+    const pkgs = await req('GET', '/api/packages');
+    const created = await req('POST', '/api/orders', { body: {
+      name: 'Invoice Test', email: 'invoice@test.local', items: [{ slug: pkgs.data.items[0].slug, qty: 2 }]
+    }});
+    const ref = created.data.order.reference;
+    const res = await fetch(`${base}/api/orders/${ref}/invoice.pdf`);
+    assert.equal(res.status, 200, 'invoice must be served');
+    assert.match(res.headers.get('content-type') || '', /application\/pdf/, 'content-type must be application/pdf');
+    const buf = Buffer.from(await res.arrayBuffer());
+    assert.ok(buf.length > 500, 'invoice must have real content');
+    assert.equal(buf.slice(0, 5).toString('latin1'), '%PDF-', 'must start with the PDF magic header');
+  });
+
+  await test('invoice for an unknown order is a clean 404', async () => {
+    const res = await fetch(`${base}/api/orders/HV-NOPE-0000/invoice.pdf`);
+    assert.equal(res.status, 404);
+  });
+
+  await test('notify module exposes customer + generic mail with graceful no-op', async () => {
+    const notify = require('./src/notify');
+    assert.equal(typeof notify.notifyCustomer, 'function', 'notifyCustomer must exist');
+    assert.equal(typeof notify.sendMail, 'function', 'sendMail must exist');
+    // With no provider configured it must resolve (never throw) to not-configured.
+    const st = notify.status();
+    if (!st.configured) {
+      const r = await notify.notifyCustomer({ reference: 'HV-X', customer_email: 'x@y.z', items: [] });
+      assert.equal(r.sent, false);
+      assert.equal(r.reason, 'not-configured');
+    }
+  });
+
+  await test('shop UI exposes traveller qty, track-order and invoice links', async () => {
+    const shopJs = fs.readFileSync(path.join(__dirname, 'public', 'js', 'shop.js'), 'utf8');
+    assert.ok(/data-shop-inc/.test(shopJs), 'shop cards must offer a qty increment');
+    assert.ok(/data-shop-dec/.test(shopJs), 'shop cards must offer a qty decrement');
+    assert.ok(/track-ref/.test(shopJs), 'shop must support tracking an order by reference');
+
+    const orderJs = fs.readFileSync(path.join(__dirname, 'public', 'js', 'order.js'), 'utf8');
+    assert.ok(/invoice\.pdf/.test(orderJs), 'the order page must link the invoice PDF');
+    assert.ok(/order-timeline/.test(orderJs), 'the order page must render a progress timeline');
+
+    const adminJs = fs.readFileSync(path.join(__dirname, 'public', 'js', 'admin.js'), 'utf8');
+    assert.ok(/or-export/.test(adminJs), 'admin orders must offer a CSV export');
+    assert.ok(/invoice\.pdf/.test(adminJs), 'admin order detail must link the invoice PDF');
+    assert.ok(/cols:/.test(adminJs), 'exportCsv must accept custom columns for orders');
+  });
+
   // Cleanup
   server.close();
   // Drop the test-only PostgreSQL schema through a SEPARATE, plain connection.

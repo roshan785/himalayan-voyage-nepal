@@ -486,14 +486,15 @@
   }
 
   /** Download the given bookings as a CSV file (client-side, no data leaves the browser). */
-  function exportCsv(rows) {
-    const cols = ['id', 'package_title', 'name', 'email', 'phone', 'travellers', 'travel_date', 'status', 'created_at'];
+  function exportCsv(rows, opts = {}) {
+    const cols = opts.cols || ['id', 'package_title', 'name', 'email', 'phone', 'travellers', 'travel_date', 'status', 'created_at'];
+    const filename = opts.filename || ('bookings-' + new Date().toISOString().slice(0, 10) + '.csv');
     const esc = (v) => '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"';
     const csv = [cols.join(',')].concat(rows.map((r) => cols.map((c) => esc(r[c])).join(','))).join('\n');
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
-    a.download = 'bookings-' + new Date().toISOString().slice(0, 10) + '.csv';
+    a.download = filename;
     document.body.appendChild(a);
     a.click();
     a.remove();
@@ -549,6 +550,7 @@
           <option value="failed">Failed</option>
           <option value="refunded">Refunded</option>
         </select>
+        <button class="btn btn--ghost btn--sm" id="or-export">Export CSV</button>
       </div>
       <div id="or-summary" class="muted small" style="margin-bottom:8px"></div>
       <div id="or-table"></div>`;
@@ -601,6 +603,10 @@
     document.getElementById('or-q').addEventListener('input', (e) => { state.q = e.target.value; paint(); });
     document.getElementById('or-status').addEventListener('change', (e) => { state.status = e.target.value; paint(); });
     document.getElementById('or-payment').addEventListener('change', (e) => { state.payment = e.target.value; paint(); });
+    document.getElementById('or-export').addEventListener('click', () => exportCsv(shown(), {
+      cols: ['id', 'reference', 'customer_name', 'customer_email', 'customer_phone', 'item_count', 'subtotal', 'discount_total', 'total', 'payment_status', 'payment_method', 'status', 'travel_date', 'created_at'],
+      filename: 'orders-' + new Date().toISOString().slice(0, 10) + '.csv'
+    }));
     paint();
   }
 
@@ -615,6 +621,13 @@
     const html = `
       <h3>Order ${App.escapeHtml(order.reference)}</h3>
       <p class="small muted">${App.escapeHtml(order.customer_name)} \u2022 ${App.escapeHtml(order.customer_email)} \u2022 ${App.escapeHtml(order.customer_phone || '\u2014')}</p>
+      <div class="order-timeline">
+        ${['pending', 'confirmed', 'completed'].map((s, i) => {
+          const reached = order.status === 'completed' ? true : (order.status === 'confirmed' ? i <= 1 : i === 0);
+          return `<span class="order-timeline__step${reached ? ' is-done' : ''}">${s}</span>`;
+        }).join('<span class="order-timeline__sep">\u2192</span>')}
+        ${order.status === 'cancelled' ? '<span class="order-timeline__step is-cancelled">cancelled</span>' : ''}
+      </div>
       <div class="table-wrap"><table class="data">
         <thead><tr><th>Package</th><th>Qty</th><th>Unit</th><th>Line</th></tr></thead>
         <tbody>${lines}</tbody>
@@ -625,6 +638,7 @@
           ${['pending', 'confirmed', 'completed', 'cancelled'].map((s) => `<option value="${s}" ${s === order.status ? 'selected' : ''}>${s}</option>`).join('')}
         </select>
         <button class="btn btn--primary btn--sm" id="od-save">Save status</button>
+        <a class="btn btn--ghost btn--sm" href="/api/orders/${encodeURIComponent(order.reference)}/invoice.pdf" target="_blank" rel="noopener">Invoice PDF</a>
         <button class="btn btn--ghost btn--sm" id="od-close">Close</button>
       </div>`;
     let modal = document.getElementById('order-detail-modal');

@@ -55,10 +55,12 @@ function bookingLines(b) {
 
 /** Send via a HTTP email API (Resend or SendGrid). */
 async function sendViaApi(b) {
-  const lines = bookingLines(b);
-  const subject = `New booking enquiry #${b.id}`;
-  const text = lines.join('\n');
-  const payload = JSON.stringify({ from: FROM(), to: [TO()], subject, text });
+  return sendViaApiRaw({ to: TO(), subject: `New booking enquiry #${b.id}`, text: bookingLines(b).join('\n') });
+}
+
+/** Low-level HTTP email send (Resend/SendGrid) for arbitrary subject/body. */
+async function sendViaApiRaw({ to, subject, text }) {
+  const payload = JSON.stringify({ from: FROM(), to: [to], subject, text });
 
   const isResend = process.env.RESEND_API_KEY;
   const host = isResend ? 'api.resend.com' : 'api.sendgrid.com';
@@ -83,14 +85,17 @@ async function sendViaApi(b) {
 
 /** Minimal SMTP conversation over net/tls — no dependency. */
 function sendViaSmtp(b) {
+  return sendViaSmtpRaw({ to: TO(), subject: `New booking enquiry #${b.id}`, text: bookingLines(b).join('\r\n') });
+}
+
+/** Minimal SMTP conversation over net/tls for an arbitrary message. */
+function sendViaSmtpRaw({ to, subject, text }) {
   const host = process.env.SMTP_HOST;
   const port = Number(process.env.SMTP_PORT) || 587;
   const user = process.env.SMTP_USER || '';
   const pass = process.env.SMTP_PASS || '';
   const from = FROM();
-  const to = TO();
-  const subject = `New booking enquiry #${b.id}`;
-  const body = bookingLines(b).join('\r\n');
+  const body = String(text || '');
   const message = [
     `From: ${from}`, `To: ${to}`, `Subject: ${subject}`,
     'MIME-Version: 1.0', 'Content-Type: text/plain; charset=utf-8', '', body
@@ -145,9 +150,66 @@ async function notifyBooking(booking) {
   }
 }
 
+/** Human-readable order summary lines for the customer's receipt email. */
+function orderLines(o) {
+  const esc = (v) => String(v == null ? '' : v).replace(/[<>&]/g, (c) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;' }[c]));
+  const rows = (o.items || []).map((it) =>
+    `  \u2022 ${esc(it.title)}  x${it.qty}  =  Rs. ${Number(it.line_total || 0).toLocaleString('en-IN')}`);
+  return [
+    `Thank you for your booking, ${esc(o.customer_name || 'traveller')}!`,
+    '',
+    `Order reference : ${esc(o.reference)}`,
+    `Travel date     : ${esc(o.travel_date || 'To be confirmed')}`,
+    '',
+    'Your packages:',
+    ...(rows.length ? rows : ['  (none)']),
+    '',
+    `Subtotal        : Rs. ${Number(o.subtotal || 0).toLocaleString('en-IN')}`,
+    `Discount        : - Rs. ${Number(o.discount_total || 0).toLocaleString('en-IN')}`,
+    `TOTAL           : Rs. ${Number(o.total || 0).toLocaleString('en-IN')}`,
+    `Payment         : ${esc(String(o.payment_status || 'unpaid').toUpperCase())}`,
+    '',
+    `View / pay online : ${publicOrderUrl(o.reference)}`,
+    '',
+    'Our team will contact you to confirm the details.',
+    'Himalayan Voyage Nepal'
+  ];
+}
+
+/** Absolute order URL, derived from a configured public base or the admin URL. */
+function publicOrderUrl(reference) {
+  const base = String(process.env.PUBLIC_BASE_URL || '').replace(/\/+$/, '');
+  return (base || '') + '/order.html?ref=' + encodeURIComponent(String(reference || ''));
+}
+
+/** Send a plain email through whichever provider is configured. Never throws. */
+async function sendMail({ to, subject, text }) {
+  if (!configured() || !to) return { sent: false, reason: 'not-configured' };
+  try {
+    const p = provider();
+    if (p === 'smtp') {
+      // Reuse the SMTP conversation with an explicit recipient/subject.
+      return await sendViaSmtpRaw({ to, subject, text });
+    }
+    return await sendViaApiRaw({ to, subject, text });
+  } catch (err) {
+    return { sent: false, reason: 'error', detail: err.message };
+  }
+}
+
+/** Email a customer their order confirmation/receipt. Best-effort. */
+async function notifyCustomer(order) {
+  if (!configured()) return { sent: false, reason: 'not-configured', provider: provider() };
+  return sendMail({
+    to: order.customer_email,
+    subject: `Your Himalayan Voyage booking ${order.reference}`,
+    text: orderLines(order).join('\n')
+  });
+}
+
 /** Status for /api/health and the admin UI — never reveals secret values. */
 function status() {
   return { configured: configured(), provider: provider(), toSet: Boolean(TO()), fromSet: Boolean(FROM()) };
 }
 
-module.exports = { notifyBooking, status, configured, provider };
+module.exports = { notifyBooking, notifyCustomer, sendMail, status, configured, provider };
