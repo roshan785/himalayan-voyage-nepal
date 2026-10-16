@@ -117,6 +117,63 @@ async function main() {
     return { status: res.status, data, headers: res.headers };
   }
 
+  // ── Invoice test helpers ─────────────────────────────────────────────────
+  // Render an invoice into a buffer (no HTTP, no database) so the layout can be
+  // asserted directly, and count pages from the PDF's own /Type /Page objects.
+  async function renderInvoice(order) {
+    const { writeInvoice } = require('./src/invoice');
+    const { PassThrough } = require('node:stream');
+    return new Promise((resolve, reject) => {
+      const chunks = [];
+      const sink = new PassThrough();
+      sink.on('data', (c) => chunks.push(c));
+      sink.on('end', () => resolve(Buffer.concat(chunks)));
+      sink.on('error', reject);
+      writeInvoice(order, sink).catch(reject);
+    });
+  }
+
+  /** Page count from a PDF buffer: `/Type /Page` (not `/Pages`). */
+  function pdfPageCount(buf) {
+    const s = Buffer.isBuffer(buf) ? buf.toString('latin1') : String(buf);
+    return (s.match(/\/Type\s*\/Page(?![s])/g) || []).length;
+  }
+
+  /**
+   * Extract visible text from a PDF buffer. Uses pdftotext when available (the
+   * robust path); otherwise falls back to decompressing content streams, then
+   * to a plain latin1 scan so a missing binary never makes a test flaky.
+   */
+  function extractPdfText(buf) {
+    try {
+      const { execFileSync } = require('node:child_process');
+      const os = require('node:os');
+      const p = require('node:path').join(os.tmpdir(), 'hv-invoice-' + process.pid + '-' + Date.now() + '.pdf');
+      fs.writeFileSync(p, buf);
+      try {
+        return execFileSync('pdftotext', ['-layout', p, '-'], { encoding: 'utf8', timeout: 15000 });
+      } finally {
+        try { fs.unlinkSync(p); } catch (_e) { /* best effort */ }
+      }
+    } catch (_e) {
+      // No pdftotext: decompress streams and read literal strings.
+      try {
+        const zlib = require('node:zlib');
+        const s = buf.toString('latin1');
+        let out = '';
+        const re = /stream\r?\n([\s\S]*?)\r?\nendstream/g;
+        let m;
+        while ((m = re.exec(s))) {
+          try { out += zlib.inflateSync(Buffer.from(m[1], 'latin1')).toString('latin1'); }
+          catch (_e2) { out += m[1]; }
+        }
+        return out;
+      } catch (_e2) {
+        return buf.toString('latin1');
+      }
+    }
+  }
+
   console.log('\nPublic API');
 
   await test('health endpoint responds ok', async () => {
@@ -1325,6 +1382,112 @@ async function main() {
   await test('invoice for an unknown order is a clean 404', async () => {
     const res = await fetch(`${base}/api/orders/HV-NOPE-0000/invoice.pdf`);
     assert.equal(res.status, 404);
+  });
+
+  // ── Invoice pagination ───────────────────────────────────────────────────
+  // A one-line-item invoice used to render TWO pages (a near-empty second one)
+  // because the footer text started exactly on the bottom-margin boundary and
+  // wrapped past it, which made PDFKit append a page. These tests lock the
+  // layout so that regression cannot come back.
+  await test('a single-item invoice is exactly one page (no blank second page)', async () => {
+    const invoice = require('./src/invoice');
+    const buf = await renderInvoice({
+      reference: 'HV-P1', created_at: '2026-10-16', payment_status: 'unpaid', payment_method: '',
+      customer_name: 'Pagination Test', customer_email: 'p@test.local', customer_phone: '', travel_date: '',
+      subtotal: 80960, discount_total: 0, total: 80960,
+      items: [{ title: 'Amazing Thailand Holiday', qty: 1, unit_price: 80960, line_total: 80960 }]
+    });
+    assert.equal(pdfPageCount(buf), 1, 'a 1-item invoice must not spill onto a second page');
+    assert.equal(typeof invoice.isTestPayment, 'function');
+  });
+
+  await test('invoice page count grows only with real content (1,2,3 pages)', async () => {
+    const mk = (n, extra = {}) => Object.assign({
+      reference: 'HV-P' + n, created_at: '2026-10-16', payment_status: 'unpaid', payment_method: '',
+      customer_name: 'P', customer_email: 'p@test.local', customer_phone: '', travel_date: '',
+      subtotal: 100 * n, discount_total: 0, total: 100 * n,
+      items: Array.from({ length: n }, (_, i) => ({ title: 'Package ' + (i + 1), qty: 1, unit_price: 100, line_total: 100 }))
+    }, extra);
+
+    const small = await renderInvoice(mk(1));
+    assert.equal(pdfPageCount(small), 1, '1 item -> 1 page');
+
+    const medium = await renderInvoice(mk(20));
+    assert.ok(pdfPageCount(medium) >= 2, '20 items -> at least 2 pages');
+
+    const heavy = await renderInvoice(mk(60));
+    assert.ok(pdfPageCount(heavy) >= 3, '60 items -> at least 3 pages');
+
+    // Every page must carry the footer — a multi-page invoice must not lose it.
+    // (Checked via the extracted text of a buffered render.)
+    const text = extractPdfText(medium);
+    const pages = text.split('\f').filter((p) => p.trim());
+    assert.ok(pages.length >= 2, 'multi-page extraction expected');
+    assert.ok(pages.every((p) => /Lakeside Road, Pokhara/.test(p)), 'every page must show the footer');
+  });
+
+  await test('an empty invoice still renders a single page', async () => {
+    const buf = await renderInvoice({
+      reference: 'HV-P0', created_at: '2026-10-16', payment_status: 'unpaid', payment_method: '',
+      customer_name: 'Empty', customer_email: '', customer_phone: '', travel_date: '',
+      subtotal: 0, discount_total: 0, total: 0, items: []
+    });
+    assert.equal(pdfPageCount(buf), 1, 'no items must still be exactly one page');
+  });
+
+  // ── Mock/test payment labelling ──────────────────────────────────────────
+  // A mock order must never read as proof of real funds. The classifier is the
+  // single source of truth for that decision.
+  await test('mock payments are classified as test and real payments are not', async () => {
+    const { isTestPayment } = require('./src/invoice');
+    assert.equal(isTestPayment({ payment_method: 'mock' }), true, 'method mock -> test');
+    assert.equal(isTestPayment({ payment_method: 'MOCK' }), true, 'method is case-insensitive');
+    assert.equal(isTestPayment({ payment_method: '', payment_ref: 'MOCK-1234' }), true, 'MOCK- ref -> test');
+    assert.equal(isTestPayment({ payment_method: 'esewa', payment_ref: 'TC-1' }), false, 'a real gateway is not test');
+    assert.equal(isTestPayment({ payment_method: 'khalti', payment_ref: 'KHT-9' }), false, 'a real gateway is not test');
+    assert.equal(isTestPayment({ payment_method: 'bank', payment_ref: 'BANK-1' }), false, 'a manual bank ref is not test');
+    assert.equal(isTestPayment({}), false, 'a bare order is not test');
+    assert.equal(isTestPayment(null), false, 'null is not test');
+  });
+
+  await test('a mock-paid invoice is labelled TEST and never claims real funds', async () => {
+    const buf = await renderInvoice({
+      reference: 'HV-MOCK1', created_at: '2026-10-16', payment_status: 'paid', payment_method: 'mock',
+      payment_ref: 'MOCK-0001', customer_name: 'Mock Buyer', customer_email: 'm@test.local',
+      customer_phone: '', travel_date: '', subtotal: 5000, discount_total: 0, total: 5000,
+      items: [{ title: 'Trek', qty: 1, unit_price: 5000, line_total: 5000 }]
+    });
+    const text = extractPdfText(buf);
+    assert.ok(/TEST PAYMENT/i.test(text), 'a mock invoice must carry the TEST PAYMENT banner');
+    assert.ok(/not proof of payment/i.test(text), 'it must state it is not proof of payment');
+    assert.ok(/TEST PAID/i.test(text), 'the status must read TEST PAID, not PAID');
+    assert.ok(/Test \(sandbox\)/i.test(text), 'the method must read Test (sandbox)');
+    assert.ok(/Total \(test\)/i.test(text), 'the total must be marked (test)');
+  });
+
+  await test('a genuine paid invoice is NOT labelled as a test', async () => {
+    const buf = await renderInvoice({
+      reference: 'HV-REAL1', created_at: '2026-10-16', payment_status: 'paid', payment_method: 'esewa',
+      payment_ref: 'TC-9999', customer_name: 'Real Buyer', customer_email: 'r@test.local',
+      customer_phone: '', travel_date: '', subtotal: 5000, discount_total: 0, total: 5000,
+      items: [{ title: 'Trek', qty: 1, unit_price: 5000, line_total: 5000 }]
+    });
+    const text = extractPdfText(buf);
+    assert.ok(!/TEST PAYMENT/i.test(text), 'a real invoice must NOT carry the TEST banner');
+    assert.ok(!/Total \(test\)/i.test(text), 'a real invoice must not mark its total as test');
+    assert.ok(/PAID/.test(text), 'a real paid invoice must still show PAID');
+  });
+
+  await test('an unpaid invoice stays provisional and carries no TEST banner', async () => {
+    const buf = await renderInvoice({
+      reference: 'HV-UNP1', created_at: '2026-10-16', payment_status: 'unpaid', payment_method: '',
+      customer_name: 'U', customer_email: 'u@test.local', customer_phone: '', travel_date: '',
+      subtotal: 100, discount_total: 0, total: 100,
+      items: [{ title: 'T', qty: 1, unit_price: 100, line_total: 100 }]
+    });
+    const text = extractPdfText(buf);
+    assert.ok(/provisional/i.test(text), 'an unpaid invoice must say it is provisional');
+    assert.ok(!/TEST PAYMENT/i.test(text), 'an unpaid (non-mock) invoice must not carry the TEST banner');
   });
 
   await test('notify module exposes customer + generic mail with graceful no-op', async () => {
