@@ -140,9 +140,51 @@ async function main() {
   }
 
   /**
-   * Extract visible text from a PDF buffer. Uses pdftotext when available (the
-   * robust path); otherwise falls back to decompressing content streams, then
-   * to a plain latin1 scan so a missing binary never makes a test flaky.
+   * Decode the literal text operators PDFKit emits in a content stream.
+   *
+   * PDFKit writes text as hex strings inside a `[<..> ..] TJ` array (e.g.
+   * `[<48656c6c6f>] TJ`), and occasionally as a literal `(..) Tj` string — its
+   * ASCII text is NOT also present as readable bytes in the stream, which is why
+   * a naive latin1 scan of the decompressed stream finds nothing.
+   *
+   * This handles ONLY those two literal operators. It is deliberately a LIMITED
+   * extractor, not a full PDF parser: it does not resolve fonts, encodings,
+   * CMaps, object streams, xref tables or text matrices. It is sufficient for
+   * the invoice strings asserted here, and nothing more is claimed.
+   */
+  function decodePdfTextOperators(content) {
+    const hexToLatin1 = (h) => Buffer.from(String(h).replace(/\s+/g, ''), 'hex').toString('latin1');
+    let out = '';
+    // [<hex> ...] TJ   |   (literal) Tj
+    const op = /\[((?:[^\[\]\\]|\\.)*)\]\s*TJ|\(((?:[^()\\]|\\.)*)\)\s*Tj/g;
+    let m;
+    while ((m = op.exec(content))) {
+      if (m[1] !== undefined) {
+        // Inside a TJ array, hex and literal strings alternate.
+        const sub = /<([0-9A-Fa-f\s]*)>|\(((?:[^()\\]|\\.)*)\)/g;
+        let t;
+        while ((t = sub.exec(m[1]))) {
+          if (t[1] !== undefined) out += hexToLatin1(t[1]);
+          else out += t[2].replace(/\\([()\\])/g, '$1');
+        }
+      } else {
+        out += m[2].replace(/\\([()\\])/g, '$1');
+      }
+    }
+    return out;
+  }
+
+  /**
+   * Extract visible text from a PDF buffer.
+   *
+   * Primary path: `pdftotext -layout` when the binary is available (the robust
+   * path). CI runners often lack poppler, so the fallback decompresses each
+   * FlateDecode content stream and decodes the literal text operators
+   * (see decodePdfTextOperators). Text-bearing streams are joined with '\f' so
+   * callers can split them into pages; image/binary streams are skipped.
+   *
+   * A missing binary therefore no longer makes these assertions fail, while the
+   * assertions themselves stay exactly as strict as before.
    */
   function extractPdfText(buf) {
     try {
@@ -156,18 +198,54 @@ async function main() {
         try { fs.unlinkSync(p); } catch (_e) { /* best effort */ }
       }
     } catch (_e) {
-      // No pdftotext: decompress streams and read literal strings.
+      // No pdftotext: decompress content streams and decode the text operators.
+      //
+      // Stream boundaries come from each object's declared `/Length`, NOT from a
+      // `...endstream` regex. A non-greedy regex stops at the first literal
+      // "\nendstream" byte sequence INSIDE the compressed data, which truncates
+      // the stream and makes inflate() throw (this is exactly why the 20-item
+      // invoice failed on CI). /Length is authoritative and PDFKit always writes
+      // it as a direct integer; if it is an indirect reference we fall back to
+      // the regex for that stream only.
       try {
         const zlib = require('node:zlib');
         const s = buf.toString('latin1');
-        let out = '';
-        const re = /stream\r?\n([\s\S]*?)\r?\nendstream/g;
-        let m;
-        while ((m = re.exec(s))) {
-          try { out += zlib.inflateSync(Buffer.from(m[1], 'latin1')).toString('latin1'); }
-          catch (_e2) { out += m[1]; }
+        const pages = [];
+        const kw = 'stream';
+        let pos = 0;
+        while (pos < s.length) {
+          const i = s.indexOf(kw, pos);
+          if (i < 0) break;
+          pos = i + kw.length;
+          // Skip the "stream" inside "endstream".
+          if (s.slice(i - 3, i) === 'end') continue;
+
+          let dataStart = i + kw.length;
+          if (s[dataStart] === '\r') dataStart++;
+          if (s[dataStart] === '\n') dataStart++;
+
+          // Read the /Length declared just before this stream (search the dict).
+          const dict = s.slice(Math.max(0, i - 400), i);
+          const lenMatch = dict.match(/\/Length\s+(\d+)(?!\s*\d+\s+R)/);
+          let raw;
+          if (lenMatch) {
+            raw = s.slice(dataStart, dataStart + Number(lenMatch[1]));
+          } else {
+            const end = s.indexOf('endstream', dataStart);
+            if (end < 0) break;
+            raw = s.slice(dataStart, end);
+          }
+          pos = dataStart + (lenMatch ? Number(lenMatch[1]) : raw.length);
+
+          let content;
+          try { content = zlib.inflateSync(Buffer.from(raw, 'latin1')).toString('latin1'); }
+          catch (_e2) { content = raw; }
+          // Only streams that actually draw text contribute a page; skip images.
+          if (!/\bBT\b/.test(content) || !/(TJ|Tj)\b/.test(content)) continue;
+          pages.push(decodePdfTextOperators(content));
         }
-        return out;
+        if (pages.length) return pages.join('\f');
+        return buf.toString('latin1');
       } catch (_e2) {
         return buf.toString('latin1');
       }
