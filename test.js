@@ -1599,6 +1599,48 @@ async function main() {
     }
   });
 
+  await test('eSewa return URLs are clean so ?data= is not corrupted', async () => {
+    const payments = require('./src/payments');
+    const saved = {
+      code: process.env.ESEWA_PRODUCT_CODE, secret: process.env.ESEWA_SECRET_KEY,
+      base: process.env.PUBLIC_BASE_URL, env: process.env.PAYMENT_ENV
+    };
+    try {
+      process.env.ESEWA_PRODUCT_CODE = 'EPAYTEST';
+      process.env.ESEWA_SECRET_KEY = 'test-secret';
+      process.env.PUBLIC_BASE_URL = 'https://example.test';
+      process.env.PAYMENT_ENV = 'sandbox';
+
+      const start = await payments.startPayment('esewa', { reference: 'HV-1', total: 1000 });
+      assert.equal(start.mode, 'form-post');
+      assert.equal(start.action, 'https://rc-epay.esewa.com.np/api/epay/main/v2/form', 'sandbox ePay v2 endpoint');
+
+      // eSewa appends "?data=<base64>" to success_url. If the URL already had a
+      // query string the browser would lose `data` and corrupt `status`, so the
+      // return URLs must carry NO query of their own.
+      for (const key of ['success_url', 'failure_url']) {
+        const url = start.fields[key];
+        assert.ok(!url.includes('?'), key + ' must not contain a query string');
+        assert.ok(url.endsWith('/order.html'), key + ' must point at the order page');
+      }
+      // signed_field_names must exactly describe the message that was signed.
+      assert.equal(start.fields.signed_field_names, 'total_amount,transaction_uuid,product_code');
+      const expectedSig = payments.esewaSignature(
+        `total_amount=1000,transaction_uuid=HV-1,product_code=EPAYTEST`, 'test-secret');
+      assert.equal(start.fields.signature, expectedSig, 'signature must be base64 HMAC-SHA256 over the signed fields');
+      // Required ePay v2 fields present.
+      for (const f of ['amount', 'tax_amount', 'total_amount', 'transaction_uuid', 'product_code',
+        'product_service_charge', 'product_delivery_charge', 'success_url', 'failure_url', 'signature']) {
+        assert.ok(start.fields[f] !== undefined, 'missing field ' + f);
+      }
+    } finally {
+      if (saved.code === undefined) delete process.env.ESEWA_PRODUCT_CODE; else process.env.ESEWA_PRODUCT_CODE = saved.code;
+      if (saved.secret === undefined) delete process.env.ESEWA_SECRET_KEY; else process.env.ESEWA_SECRET_KEY = saved.secret;
+      if (saved.base === undefined) delete process.env.PUBLIC_BASE_URL; else process.env.PUBLIC_BASE_URL = saved.base;
+      if (saved.env === undefined) delete process.env.PAYMENT_ENV; else process.env.PAYMENT_ENV = saved.env;
+    }
+  });
+
   await test('eSewa verification sets paid:true on a valid, COMPLETE signature', async () => {
     const payments = require('./src/payments');
     const savedSecret = process.env.ESEWA_SECRET_KEY;
@@ -1641,6 +1683,85 @@ async function main() {
     } finally {
       if (savedSecret === undefined) delete process.env.ESEWA_SECRET_KEY; else process.env.ESEWA_SECRET_KEY = savedSecret;
       if (savedCode === undefined) delete process.env.ESEWA_PRODUCT_CODE; else process.env.ESEWA_PRODUCT_CODE = savedCode;
+    }
+  });
+
+  await test('a signed receipt for a DIFFERENT order is rejected (replay guard)', async () => {
+    const payments = require('./src/payments');
+    const savedSecret = process.env.ESEWA_SECRET_KEY;
+    const savedCode = process.env.ESEWA_PRODUCT_CODE;
+    try {
+      process.env.ESEWA_SECRET_KEY = 'test-secret';
+      process.env.ESEWA_PRODUCT_CODE = 'EPAYTEST';
+      const payloadObj = {
+        transaction_code: 'X1', status: 'COMPLETE', total_amount: '1000',
+        transaction_uuid: 'HV-OTHER-ORDER', product_code: 'EPAYTEST',
+        signed_field_names: 'total_amount,transaction_uuid,product_code'
+      };
+      const msg = `total_amount=${payloadObj.total_amount},transaction_uuid=${payloadObj.transaction_uuid},product_code=${payloadObj.product_code}`;
+      payloadObj.signature = payments.esewaSignature(msg, 'test-secret');
+      const encoded = Buffer.from(JSON.stringify(payloadObj)).toString('base64');
+      const r = await payments.esewaVerify(encoded, null);
+      assert.equal(r.ok, true, 'the signature itself is valid');
+      assert.equal(r.reference, 'HV-OTHER-ORDER', 'the verifier must report which order the receipt names');
+    } finally {
+      if (savedSecret === undefined) delete process.env.ESEWA_SECRET_KEY; else process.env.ESEWA_SECRET_KEY = savedSecret;
+      if (savedCode === undefined) delete process.env.ESEWA_PRODUCT_CODE; else process.env.ESEWA_PRODUCT_CODE = savedCode;
+    }
+  });
+
+  await test('the verify route refuses a receipt naming a different order', async () => {
+    const pkgs = await req('GET', '/api/packages');
+    const created = await req('POST', '/api/orders', { body: {
+      name: 'Replay', email: 'replay@test.local', items: [{ slug: pkgs.data.items[0].slug, qty: 1 }]
+    }});
+    const ref = created.data.order.reference;
+    // Set the order's method to esewa by starting it (no live creds -> 400, so
+    // set it directly through the admin API is not needed: the verify route uses
+    // order.payment_method, which stays ''; pass method in the body instead).
+    await req('POST', `/api/orders/${ref}/pay`, { body: { method: 'esewa' } }); // 400 not-configured, fine
+    // Build a signed payload for a DIFFERENT reference.
+    const crypto = require('node:crypto');
+    const savedSecret = process.env.ESEWA_SECRET_KEY;
+    process.env.ESEWA_SECRET_KEY = 'test-secret';
+    try {
+      const total = created.data.order.total;
+      const other = 'HV-DIFFERENT-ORDER';
+      const msg = `total_amount=${total},transaction_uuid=${other},product_code=EPAYTEST`;
+      const sig = crypto.createHmac('sha256', 'test-secret').update(msg).digest('base64');
+      const data = Buffer.from(JSON.stringify({
+        status: 'COMPLETE', total_amount: String(total), transaction_uuid: other,
+        product_code: 'EPAYTEST', signed_field_names: 'total_amount,transaction_uuid,product_code', signature: sig
+      })).toString('base64');
+      const r = await req('POST', `/api/orders/${ref}/verify`, { body: { method: 'esewa', data } });
+      assert.equal(r.status, 400, 'a receipt for another order must be rejected');
+      assert.match(String(r.data.error), /reference/i);
+      const after = await req('GET', '/api/orders/' + ref);
+      assert.notEqual(after.data.order.payment_status, 'paid', 'the order must stay unpaid');
+    } finally {
+      if (savedSecret === undefined) delete process.env.ESEWA_SECRET_KEY; else process.env.ESEWA_SECRET_KEY = savedSecret;
+    }
+  });
+
+  await test('eSewa not-configured degrades cleanly (no crash, clear message)', async () => {
+    const payments = require('./src/payments');
+    const saved = { code: process.env.ESEWA_PRODUCT_CODE, secret: process.env.ESEWA_SECRET_KEY, base: process.env.PUBLIC_BASE_URL };
+    try {
+      delete process.env.ESEWA_PRODUCT_CODE;
+      delete process.env.ESEWA_SECRET_KEY;
+      process.env.PUBLIC_BASE_URL = 'https://example.test';
+      const r = await payments.startPayment('esewa', { reference: 'HV-1', total: 100 });
+      assert.equal(r.ok, false);
+      assert.equal(r.reason, 'not-configured');
+      assert.match(String(r.message), /eSewa/i);
+      // And the provider list reports it as not configured.
+      const list = payments.listProviders();
+      const es = list.find((p) => p.id === 'esewa');
+      assert.equal(es.configured, false, 'esewa must not claim to be configured without keys');
+    } finally {
+      if (saved.code !== undefined) process.env.ESEWA_PRODUCT_CODE = saved.code;
+      if (saved.secret !== undefined) process.env.ESEWA_SECRET_KEY = saved.secret;
+      if (saved.base !== undefined) process.env.PUBLIC_BASE_URL = saved.base;
     }
   });
 

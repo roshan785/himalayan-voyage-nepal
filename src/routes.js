@@ -620,6 +620,13 @@ function publicRouter() {
       return res.status(400).json({ error: 'Payment verification failed', reason: result.reason });
     }
 
+    // The verified payload must belong to THIS order. A valid signature that
+    // names a different transaction_uuid is a replay of another order's receipt.
+    if (result.reference && String(result.reference) !== String(order.reference)) {
+      if (order.payment_status !== 'paid') await updateOrder(order.id, { payment_status: 'failed' });
+      return res.status(400).json({ error: 'Payment reference does not match this order' });
+    }
+
     // Amount cross-check: a valid signature on the WRONG amount is still a fraud
     // attempt, so the verified amount must equal the stored order total.
     if (result.amount !== undefined && Number(result.amount) !== Number(order.total)) {

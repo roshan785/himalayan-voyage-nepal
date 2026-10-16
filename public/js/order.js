@@ -86,16 +86,38 @@
     }
   }
 
+  /**
+   * Decode eSewa's base64 `data` blob far enough to read the order reference.
+   * eSewa returns `<success_url>?data=<base64>`; we no longer append our own
+   * query string (that would corrupt the parameters), so the reference has to be
+   * recovered from the signed payload (transaction_uuid).
+   */
+  function referenceFromEsewaData(data) {
+    try {
+      const json = JSON.parse(atob(String(data)));
+      return String(json.transaction_uuid || json.transaction_code || '').trim();
+    } catch (_e) { return ''; }
+  }
+
   /** Ask the server to verify a gateway callback, then re-render. */
   async function verifyReturn(reference, params) {
+    const data = params.get('data') || '';
+    const pidx = params.get('pidx') || '';
+    // Work out which gateway we came back from, so the server uses the right
+    // verifier. (The server also knows order.payment_method; this is a hint.)
+    let method = params.get('method') || '';
+    if (!method) {
+      if (data) method = 'esewa';
+      else if (pidx) method = 'khalti';
+      else if (params.get('mock_sig')) method = 'mock';
+      else method = 'mock';
+    }
     const evidence = {
-      method: params.get('method') || 'mock',
+      method,
       mock_sig: params.get('mock_sig') || '',
       mock_ts: params.get('mock_ts') || '',
-      // eSewa delivers its signed payload as base64 JSON in ?data=; Khalti
-      // returns ?pidx= on the return_url. The server re-checks both.
-      data: params.get('data') || '',
-      pidx: params.get('pidx') || params.get('transaction_uuid') || ''
+      data,
+      pidx: pidx || params.get('transaction_uuid') || ''
     };
     try {
       const res = await App.api(`/api/orders/${encodeURIComponent(reference)}/verify`, {
@@ -135,7 +157,12 @@
     if (!App) return;
     await App.creditsReady();
     const params = new URLSearchParams(location.search);
+
+    // Resolve the order reference. eSewa returns only `?data=<base64>`, so the
+    // reference comes out of that signed payload; other flows pass `?ref=`, and
+    // a fresh checkout has it in sessionStorage.
     let reference = params.get('ref') || '';
+    if (!reference && params.get('data')) reference = referenceFromEsewaData(params.get('data'));
     if (!reference) {
       try { reference = window.sessionStorage.getItem('hv_last_order') || ''; } catch (_e) { reference = ''; }
     }
@@ -144,8 +171,10 @@
         '<div class="empty">No order selected. <a href="shop.html">Browse the Travel Shop</a>.</div>';
       return;
     }
-    // If the gateway came back with a status carrying proof, verify it first.
-    if (params.get('status') && (params.get('mock_sig') || params.get('data') || params.get('pidx') || params.get('transaction_uuid'))) {
+    // A gateway callback always carries one of these pieces of evidence.
+    const hasEvidence = params.get('mock_sig') || params.get('data') || params.get('pidx')
+      || params.get('transaction_uuid') || params.get('status');
+    if (hasEvidence) {
       await verifyReturn(reference, params);
     }
     load(reference);

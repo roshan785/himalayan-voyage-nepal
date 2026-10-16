@@ -158,6 +158,18 @@ function esewaStart(order) {
   const uuid = order.reference;
   const message = `total_amount=${amount},transaction_uuid=${uuid},product_code=${cfg.productCode}`;
   const signature = esewaSignature(message, cfg.secret);
+
+  // The return URLs MUST NOT carry a query string of their own.
+  //
+  // eSewa redirects the browser back to `success_url?data=<base64>` (appending
+  // with a literal '?'). If success_url already had "?ref=..&status=..", the
+  // browser would parse the result as
+  //     status = "esewa-success?data=eyJ..."
+  // and `data` would be LOST — so the signed response could never be verified.
+  // Keeping the URLs clean means "order.html?data=..." parses correctly, and
+  // the order reference is recovered from the decoded `data` blob (which
+  // contains transaction_uuid) or from sessionStorage as a fallback.
+  const cleanReturn = `${base}/order.html`;
   return {
     ok: true,
     provider: 'esewa',
@@ -172,8 +184,8 @@ function esewaStart(order) {
       product_code: cfg.productCode,
       product_service_charge: '0',
       product_delivery_charge: '0',
-      success_url: `${base}/order.html?ref=${encodeURIComponent(uuid)}&status=esewa-success`,
-      failure_url: `${base}/order.html?ref=${encodeURIComponent(uuid)}&status=esewa-failure`,
+      success_url: cleanReturn,
+      failure_url: cleanReturn,
       signed_field_names: 'total_amount,transaction_uuid,product_code',
       signature
     }

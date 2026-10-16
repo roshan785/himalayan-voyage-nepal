@@ -10,6 +10,18 @@ implemented in `src/payments.js` and verified by the test suite.
 > sandbox, because that requires **your** merchant credentials. Until a real
 > sandbox run is done, no provider is marked `live`.
 
+## 0. Where eSewa calls back (important for the URL to be correct)
+
+eSewa redirects the customer's browser back to **`success_url` + `?data=<base64>`**,
+appending with a literal `?`. Therefore `success_url` / `failure_url` must carry
+**no query string of their own** — otherwise the browser parses
+`status = "esewa-success?data=eyJ..."` and the signed `data` payload is lost, so
+the payment can never be verified.
+
+The app sends a clean `https://<your-site>/order.html`, then recovers the order
+reference from the decoded `data` blob (`transaction_uuid`). This is enforced by
+a test (`eSewa return URLs are clean so ?data= is not corrupted`).
+
 ---
 
 ## 1. What is already done (no action needed)
@@ -103,15 +115,29 @@ allowed, and which gateways are configured (never a secret value):
 
 ## 4. Sandbox test procedure (do this BEFORE production)
 
-1. Set `PAYMENT_ENV=sandbox` and the **sandbox** credentials.
-2. Open the shop, add a package, go to checkout, choose **eSewa** or **Khalti**.
-3. Complete the payment with the sandbox test credentials.
-4. Confirm:
-   - you are returned to `/order.html?ref=...`,
+### 4.1 Run it locally first (no credentials needed for the offline mock)
+
+```bash
+cd ~/Documents/OpenOS/apps/travel-nepal
+DATABASE_URL="sqlite:/tmp/hv-test.db" npm test     # isolated DB only
+```
+The suite covers the eSewa form fields, signature, callback parsing, replay and
+tamper cases without touching any real gateway.
+
+### 4.2 Then against eSewa's real sandbox
+
+Set `PAYMENT_ENV=sandbox` plus `ESEWA_PRODUCT_CODE=EPAYTEST` and the **published
+EPAYTEST secret** (obtain it from eSewa — it is not stored in this repo), and
+`PUBLIC_BASE_URL` to a URL eSewa can redirect back to.
+
+1. Open the shop, add a package, go to checkout, choose **eSewa**.
+2. Complete the payment with eSewa's sandbox test credentials.
+3. Confirm:
+   - you are returned to `/order.html?data=...`,
    - the order shows **Paid** (the server verified it — not the browser),
    - the admin **Orders** view shows `payment_status = paid` and the gateway ref,
    - the same callback sent twice does not double-confirm.
-5. Repeat once with a **cancelled** payment and confirm the order stays unpaid.
+4. Repeat once with a **failure** flow and confirm the order stays unpaid.
 
 Only after all of the above pass should you consider production.
 

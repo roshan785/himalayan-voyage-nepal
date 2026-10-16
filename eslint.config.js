@@ -29,6 +29,8 @@ module.exports = [
         FormData: 'readonly',
         FileReader: 'readonly',
         Blob: 'readonly',
+        atob: 'readonly',
+        btoa: 'readonly',
         getComputedStyle: 'readonly',
         location: 'readonly',
         fetch: 'readonly',
