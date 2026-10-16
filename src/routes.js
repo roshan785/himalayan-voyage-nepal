@@ -629,9 +629,16 @@ function publicRouter() {
 
     // Amount cross-check: a valid signature on the WRONG amount is still a fraud
     // attempt, so the verified amount must equal the stored order total.
-    if (result.amount !== undefined && Number(result.amount) !== Number(order.total)) {
-      if (order.payment_status !== 'paid') await updateOrder(order.id, { payment_status: 'failed' });
-      return res.status(400).json({ error: 'Payment amount does not match the order total' });
+    // Strict equality on finite numbers only — a NaN/undefined/garbage amount
+    // (e.g. an unparseable gateway string) must never be treated as a match.
+    if (result.amount !== undefined) {
+      const paidAmount = Number(result.amount);
+      const orderAmount = Number(order.total);
+      const matches = Number.isFinite(paidAmount) && Number.isFinite(orderAmount) && paidAmount === orderAmount;
+      if (!matches) {
+        if (order.payment_status !== 'paid') await updateOrder(order.id, { payment_status: 'failed' });
+        return res.status(400).json({ error: 'Payment amount does not match the order total' });
+      }
     }
 
     if (result.paid) {

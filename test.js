@@ -1686,6 +1686,149 @@ async function main() {
     }
   });
 
+  // ── eSewa amount formatting ───────────────────────────────────────────────
+  // eSewa's documented response example shows the amount as the STRING
+  // "1,000.0". `Number("1,000.0")` is NaN, which used to reject every real
+  // callback. parseEsewaAmount() accepts the ONE unambiguous ASCII grouping
+  // form and rejects anything else rather than guessing.
+  await test('parseEsewaAmount accepts plain and strict-thousands amounts only', async () => {
+    const { parseEsewaAmount } = require('./src/payments');
+    // accepted
+    assert.equal(parseEsewaAmount('1000.0'), 1000, 'plain decimal');
+    assert.equal(parseEsewaAmount('1000'), 1000, 'plain integer');
+    assert.equal(parseEsewaAmount('80960'), 80960);
+    assert.equal(parseEsewaAmount('0'), 0);
+    assert.equal(parseEsewaAmount(100), 100, 'numeric input passes through');
+    assert.equal(parseEsewaAmount('1,000.0'), 1000, 'strict thousands + decimal');
+    assert.equal(parseEsewaAmount('1,000'), 1000, 'strict thousands');
+    assert.equal(parseEsewaAmount('12,345,678.90'), 12345678.9, 'multiple groups');
+    // rejected — must be null, never a coerced number
+    assert.equal(parseEsewaAmount('1,23,750'), null, 'South-Asian grouping is ambiguous');
+    assert.equal(parseEsewaAmount('1.000,0'), null, 'European decimal comma');
+    assert.equal(parseEsewaAmount('Rs. 1000'), null, 'unit prefix');
+    assert.equal(parseEsewaAmount('1 000'), null, 'space separator');
+    assert.equal(parseEsewaAmount('1,000.'), null, 'trailing dot');
+    assert.equal(parseEsewaAmount('1,0000'), null, 'wrong grouping');
+    assert.equal(parseEsewaAmount('-100'), null, 'negative');
+    assert.equal(parseEsewaAmount('abc'), null);
+    assert.equal(parseEsewaAmount(''), null);
+    assert.equal(parseEsewaAmount(null), null);
+    assert.equal(parseEsewaAmount(undefined), null);
+    assert.equal(parseEsewaAmount(true), null, 'boolean is not a number');
+    assert.equal(parseEsewaAmount([100]), null, 'array is not a number');
+    assert.equal(parseEsewaAmount(NaN), null, 'NaN is rejected');
+    assert.equal(parseEsewaAmount(Infinity), null, 'Infinity is rejected');
+  });
+
+  await test('eSewa verify accepts a comma-formatted total_amount (docs: "1,000.0")', async () => {
+    const payments = require('./src/payments');
+    const savedSecret = process.env.ESEWA_SECRET_KEY;
+    const savedCode = process.env.ESEWA_PRODUCT_CODE;
+    try {
+      process.env.ESEWA_SECRET_KEY = 'test-secret';
+      process.env.ESEWA_PRODUCT_CODE = 'EPAYTEST';
+      const payloadObj = {
+        transaction_code: 'CM1', status: 'COMPLETE', total_amount: '1,000.0',
+        transaction_uuid: 'HV-CM-1', product_code: 'EPAYTEST',
+        signed_field_names: 'total_amount,transaction_uuid,product_code'
+      };
+      // Signature is computed over the RAW string (comma included) — unchanged.
+      const msg = `total_amount=${payloadObj.total_amount},transaction_uuid=${payloadObj.transaction_uuid},product_code=${payloadObj.product_code}`;
+      payloadObj.signature = payments.esewaSignature(msg, 'test-secret');
+      const encoded = Buffer.from(JSON.stringify(payloadObj)).toString('base64');
+
+      const r = await payments.esewaVerify(encoded, null);
+      assert.equal(r.ok, true, 'the signature over the raw comma string must verify');
+      assert.equal(r.paid, true);
+      assert.equal(r.amount, 1000, 'comma form must parse to the numeric amount');
+    } finally {
+      if (savedSecret === undefined) delete process.env.ESEWA_SECRET_KEY; else process.env.ESEWA_SECRET_KEY = savedSecret;
+      if (savedCode === undefined) delete process.env.ESEWA_PRODUCT_CODE; else process.env.ESEWA_PRODUCT_CODE = savedCode;
+    }
+  });
+
+  await test('eSewa verify rejects an unparseable total_amount (never a match)', async () => {
+    const payments = require('./src/payments');
+    const savedSecret = process.env.ESEWA_SECRET_KEY;
+    const savedCode = process.env.ESEWA_PRODUCT_CODE;
+    try {
+      process.env.ESEWA_SECRET_KEY = 'test-secret';
+      process.env.ESEWA_PRODUCT_CODE = 'EPAYTEST';
+      for (const bad of ['Rs. 1000', '1,23,750', '1,000.', 'abc']) {
+        const payloadObj = {
+          transaction_code: 'BAD', status: 'COMPLETE', total_amount: bad,
+          transaction_uuid: 'HV-BAD-1', product_code: 'EPAYTEST',
+          signed_field_names: 'total_amount,transaction_uuid,product_code'
+        };
+        const msg = `total_amount=${bad},transaction_uuid=${payloadObj.transaction_uuid},product_code=EPAYTEST`;
+        payloadObj.signature = payments.esewaSignature(msg, 'test-secret');
+        const encoded = Buffer.from(JSON.stringify(payloadObj)).toString('base64');
+        const r = await payments.esewaVerify(encoded, null);
+        assert.equal(r.ok, false, `amount ${JSON.stringify(bad)} must be rejected`);
+        assert.equal(r.reason, 'bad-amount');
+        assert.notEqual(r.paid, true);
+      }
+    } finally {
+      if (savedSecret === undefined) delete process.env.ESEWA_SECRET_KEY; else process.env.ESEWA_SECRET_KEY = savedSecret;
+      if (savedCode === undefined) delete process.env.ESEWA_PRODUCT_CODE; else process.env.ESEWA_PRODUCT_CODE = savedCode;
+    }
+  });
+
+  await test('the verify route confirms a comma-formatted eSewa amount end-to-end', async () => {
+    const crypto = require('node:crypto');
+    const pkgs = await req('GET', '/api/packages');
+    const created = await req('POST', '/api/orders', { body: {
+      name: 'Comma Buyer', email: 'comma@test.local', items: [{ slug: pkgs.data.items[0].slug, qty: 1 }]
+    }});
+    const order = created.data.order;
+    const ref = order.reference;
+    const total = order.total;
+    const savedSecret = process.env.ESEWA_SECRET_KEY;
+    process.env.ESEWA_SECRET_KEY = 'test-secret';
+    try {
+      // Send the amount in the comma form eSewa's docs show, correctly signed.
+      const comma = String(total).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+      const msg = `total_amount=${comma},transaction_uuid=${ref},product_code=EPAYTEST`;
+      const sig = crypto.createHmac('sha256', 'test-secret').update(msg).digest('base64');
+      const data = Buffer.from(JSON.stringify({
+        status: 'COMPLETE', total_amount: comma, transaction_uuid: ref,
+        product_code: 'EPAYTEST', signed_field_names: 'total_amount,transaction_uuid,product_code', signature: sig
+      })).toString('base64');
+      const r = await req('POST', `/api/orders/${ref}/verify`, { body: { method: 'esewa', data } });
+      assert.equal(r.status, 200, 'a correctly signed comma amount must confirm');
+      assert.equal(r.data.paid, true);
+      assert.equal(r.data.order.payment_status, 'paid');
+    } finally {
+      if (savedSecret === undefined) delete process.env.ESEWA_SECRET_KEY; else process.env.ESEWA_SECRET_KEY = savedSecret;
+    }
+  });
+
+  await test('the verify route rejects a malformed eSewa amount without confirming', async () => {
+    const crypto = require('node:crypto');
+    const pkgs = await req('GET', '/api/packages');
+    const created = await req('POST', '/api/orders', { body: {
+      name: 'BadAmt', email: 'badamt@test.local', items: [{ slug: pkgs.data.items[0].slug, qty: 1 }]
+    }});
+    const ref = created.data.order.reference;
+    const savedSecret = process.env.ESEWA_SECRET_KEY;
+    process.env.ESEWA_SECRET_KEY = 'test-secret';
+    try {
+      const bad = 'Rs. 1000';
+      const msg = `total_amount=${bad},transaction_uuid=${ref},product_code=EPAYTEST`;
+      const sig = crypto.createHmac('sha256', 'test-secret').update(msg).digest('base64');
+      const data = Buffer.from(JSON.stringify({
+        status: 'COMPLETE', total_amount: bad, transaction_uuid: ref,
+        product_code: 'EPAYTEST', signed_field_names: 'total_amount,transaction_uuid,product_code', signature: sig
+      })).toString('base64');
+      const r = await req('POST', `/api/orders/${ref}/verify`, { body: { method: 'esewa', data } });
+      assert.equal(r.status, 400, 'an unparseable amount must be rejected');
+      const after = await req('GET', '/api/orders/' + ref);
+      assert.notEqual(after.data.order.payment_status, 'paid', 'the order must not be paid');
+    } finally {
+      if (savedSecret === undefined) delete process.env.ESEWA_SECRET_KEY; else process.env.ESEWA_SECRET_KEY = savedSecret;
+    }
+  });
+
   await test('a signed receipt for a DIFFERENT order is rejected (replay guard)', async () => {
     const payments = require('./src/payments');
     const savedSecret = process.env.ESEWA_SECRET_KEY;

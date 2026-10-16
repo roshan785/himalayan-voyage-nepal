@@ -144,6 +144,42 @@ function esewaSignature(message, secret) {
   return crypto.createHmac('sha256', secret).update(message).digest('base64');
 }
 
+/**
+ * Parse an amount that a gateway sent back, WITHOUT ever coercing a malformed
+ * value into a plausible-looking number.
+ *
+ * Why this exists: eSewa's own documented response example shows the amount as
+ * the STRING "1,000.0" (with a thousands separator). `Number("1,000.0")` is
+ * `NaN`, which — before this helper — made the route's `NaN !== total` check
+ * reject EVERY callback, so a real, valid payment could never confirm.
+ *
+ * The separator is accepted ONLY in the one unambiguous ASCII form
+ * `\d{1,3}(,\d{3})+` (e.g. 1,000 / 12,345,678.90). Anything ambiguous or
+ * locale-specific is REJECTED (returns null) rather than guessed:
+ *   • "1,23,750"   (South-Asian grouping — ambiguous)      -> null
+ *   • "1.000,0"    (European decimal comma)                -> null
+ *   • "Rs. 1000"   (unit prefix)                           -> null
+ *   • ""/"abc"/"-100"/"1 000"/"1,000."                     -> null
+ *
+ * NOTE: it is NOT confirmed that eSewa emits the comma form on a real callback
+ * — that can only be settled with a live sandbox run. This helper makes the
+ * code correct under BOTH shapes without loosening the validation for the rest.
+ *
+ * @returns {number|null} the numeric amount, or null if the format is not one
+ *   we can accept unambiguously.
+ */
+function parseEsewaAmount(raw) {
+  if (typeof raw === 'number') return Number.isFinite(raw) ? raw : null;
+  if (typeof raw !== 'string') return null;
+  const s = raw.trim();
+  if (!s) return null;
+  // Plain integer or decimal: 1234, 1234.5, 0, 80960
+  if (/^\d+(\.\d+)?$/.test(s)) return Number(s);
+  // Thousands-separated (strict ASCII grouping only): 1,000 / 12,345,678.90
+  if (/^\d{1,3}(,\d{3})+(\.\d+)?$/.test(s)) return Number(s.replace(/,/g, ''));
+  return null;
+}
+
 /** Build the signed form fields the browser must POST to eSewa. */
 function esewaStart(order) {
   const cfg = esewaConfig();
@@ -211,7 +247,9 @@ async function esewaTransactionStatus(reference, amount) {
   return {
     ok: true,
     status: String(res.data.status || ''),
-    total_amount: Number(res.data.total_amount),
+    // The status API returns a JSON number, but parse defensively so a
+    // string form ("1,000.0") cannot silently become NaN.
+    total_amount: parseEsewaAmount(res.data.total_amount),
     reference: String(res.data.transaction_uuid || reference),
     providerRef: String(res.data.ref_id || res.data.transaction_code || '')
   };
@@ -250,8 +288,15 @@ async function esewaVerify(encodedData, order) {
   }
 
   const reference = String(payload.transaction_uuid || '');
-  const amount = Number(payload.total_amount);
+  const amount = parseEsewaAmount(payload.total_amount);
   const status = String(payload.status || '').toUpperCase();
+
+  // ── Signature already PASSED above (checked against the raw strings). ──
+  // Now enforce the amount format. A malformed/absent amount (null) must never
+  // be treated as a match — return not-ok so the route marks the order failed.
+  if (amount === null) {
+    return { ok: false, reason: 'bad-amount', reference, amount, status };
+  }
 
   // A signed callback can still describe a non-success state.
   if (status && status !== 'COMPLETE') {
@@ -487,6 +532,7 @@ module.exports = {
   toPaisa,
   // exported for tests
   esewaSignature,
+  parseEsewaAmount,
   esewaVerify,
   esewaTransactionStatus,
   khaltiVerify,
