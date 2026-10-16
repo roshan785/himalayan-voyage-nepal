@@ -68,6 +68,12 @@ process.env.JWT_SECRET = randomSecret();
 process.env.ADMIN_EMAIL = TEST_ADMIN_EMAIL;
 process.env.ADMIN_PASSWORD = TEST_ADMIN_PASSWORD;
 process.env.PORT = '0';
+// The suite drives the offline `mock` provider, so pin the payment environment
+// explicitly. Without this, an inherited NODE_ENV=production (or running on a
+// Render box) would correctly disable mock and the payment tests would fail for
+// the right reason on the wrong setup.
+process.env.PAYMENT_ENV = 'sandbox';
+delete process.env.ALLOW_MOCK_PAYMENTS;
 
 // A syntactically token-shaped string that is guaranteed not to verify.
 const INVALID_TOKEN = [randomSecret(), randomSecret(), randomSecret()].join('.');
@@ -1348,6 +1354,192 @@ async function main() {
     assert.ok(/or-export/.test(adminJs), 'admin orders must offer a CSV export');
     assert.ok(/invoice\.pdf/.test(adminJs), 'admin order detail must link the invoice PDF');
     assert.ok(/cols:/.test(adminJs), 'exportCsv must accept custom columns for orders');
+  });
+
+  // ------------------------------------------------------------------------
+  // Real-payment hardening: sandbox/production split, provider hosts, the
+  // production mock lock, atomic single confirmation, and eSewa/Khalti
+  // verification semantics.
+  // ------------------------------------------------------------------------
+  console.log('\nPayment hardening');
+
+  await test('payment env selects the correct sandbox/production gateway hosts', async () => {
+    const payments = require('./src/payments');
+    const saved = {
+      env: process.env.PAYMENT_ENV, es: process.env.ESEWA_BASE_URL,
+      kh: process.env.KHALTI_BASE_URL, nodeEnv: process.env.NODE_ENV, render: process.env.RENDER
+    };
+    try {
+      delete process.env.ESEWA_BASE_URL; delete process.env.KHALTI_BASE_URL;
+      delete process.env.NODE_ENV; delete process.env.RENDER;
+
+      // Explicit sandbox.
+      process.env.PAYMENT_ENV = 'sandbox';
+      let s = payments.status();
+      assert.equal(s.env, 'sandbox');
+      assert.equal(s.esewa.host, 'https://rc-epay.esewa.com.np', 'eSewa sandbox host');
+      assert.equal(s.khalti.host, 'https://dev.khalti.com/api/v2', 'Khalti sandbox host (was a.khalti.com — wrong)');
+
+      // Explicit production.
+      process.env.PAYMENT_ENV = 'production';
+      s = payments.status();
+      assert.equal(s.env, 'production');
+      assert.equal(s.esewa.host, 'https://epay.esewa.com.np', 'eSewa production host');
+      assert.equal(s.khalti.host, 'https://khalti.com/api/v2', 'Khalti production host');
+      // The old, undocumented default must be gone.
+      assert.ok(!/a\.khalti\.com/.test(s.khalti.host), 'a.khalti.com is not a documented endpoint');
+
+      // No explicit PAYMENT_ENV: a Render/NODE_ENV=production host must NOT
+      // silently default to sandbox (that would re-open the mock provider).
+      delete process.env.PAYMENT_ENV;
+      process.env.RENDER = 'true';
+      s = payments.status();
+      assert.equal(s.env, 'production', 'Render host must default to production');
+      assert.equal(payments.mockAllowed(), false, 'mock must stay off on a live host by default');
+      delete process.env.RENDER;
+
+      // A plain dev machine defaults to sandbox.
+      process.env.NODE_ENV = 'development';
+      assert.equal(payments.status().env, 'sandbox', 'local dev defaults to sandbox');
+    } finally {
+      if (saved.env === undefined) delete process.env.PAYMENT_ENV; else process.env.PAYMENT_ENV = saved.env;
+      if (saved.es === undefined) delete process.env.ESEWA_BASE_URL; else process.env.ESEWA_BASE_URL = saved.es;
+      if (saved.kh === undefined) delete process.env.KHALTI_BASE_URL; else process.env.KHALTI_BASE_URL = saved.kh;
+      if (saved.nodeEnv === undefined) delete process.env.NODE_ENV; else process.env.NODE_ENV = saved.nodeEnv;
+      if (saved.render === undefined) delete process.env.RENDER; else process.env.RENDER = saved.render;
+    }
+  });
+
+  await test('mock payments are hard-blocked in production unless explicitly allowed', async () => {
+    const payments = require('./src/payments');
+    const savedEnv = process.env.PAYMENT_ENV;
+    const savedAllow = process.env.ALLOW_MOCK_PAYMENTS;
+    try {
+      process.env.PAYMENT_ENV = 'production';
+      delete process.env.ALLOW_MOCK_PAYMENTS;
+      assert.equal(payments.mockAllowed(), false, 'mock must be off in production');
+      assert.equal(payments.methodAllowed('mock'), false);
+      assert.ok(!payments.listProviders().some((p) => p.id === 'mock'), 'mock must not be advertised in production');
+      const started = await payments.startPayment('mock', { reference: 'HV-X', total: 100 });
+      assert.equal(started.ok, false, 'starting a mock payment in production must fail');
+      assert.equal(started.reason, 'method-disabled');
+
+      // Deliberate opt-in (e.g. a rehearsal) re-enables it.
+      process.env.ALLOW_MOCK_PAYMENTS = 'true';
+      assert.equal(payments.mockAllowed(), true);
+
+      process.env.PAYMENT_ENV = 'sandbox';
+      assert.equal(payments.mockAllowed(), true, 'mock is always fine in sandbox');
+    } finally {
+      if (savedEnv === undefined) delete process.env.PAYMENT_ENV; else process.env.PAYMENT_ENV = savedEnv;
+      if (savedAllow === undefined) delete process.env.ALLOW_MOCK_PAYMENTS; else process.env.ALLOW_MOCK_PAYMENTS = savedAllow;
+    }
+  });
+
+  await test('eSewa verification sets paid:true on a valid, COMPLETE signature', async () => {
+    const payments = require('./src/payments');
+    const savedSecret = process.env.ESEWA_SECRET_KEY;
+    const savedCode = process.env.ESEWA_PRODUCT_CODE;
+    try {
+      process.env.ESEWA_SECRET_KEY = 'test-secret';
+      process.env.ESEWA_PRODUCT_CODE = 'EPAYTEST';
+      const payloadObj = {
+        transaction_code: 'ABC123',
+        status: 'COMPLETE',
+        total_amount: '1500',
+        transaction_uuid: 'HV-TEST-1',
+        product_code: 'EPAYTEST',
+        signed_field_names: 'total_amount,transaction_uuid,product_code'
+      };
+      const msg = `total_amount=${payloadObj.total_amount},transaction_uuid=${payloadObj.transaction_uuid},product_code=${payloadObj.product_code}`;
+      payloadObj.signature = payments.esewaSignature(msg, 'test-secret');
+      const encoded = Buffer.from(JSON.stringify(payloadObj)).toString('base64');
+
+      // No order passed → skip the status-API step and trust the signed payload.
+      const r = await payments.esewaVerify(encoded, null);
+      assert.equal(r.ok, true);
+      assert.equal(r.paid, true, 'the previous code never set paid — a real success could not confirm');
+      assert.equal(r.amount, 1500);
+      assert.equal(r.reference, 'HV-TEST-1');
+
+      // A tampered signature must fail.
+      const bad = Buffer.from(JSON.stringify(Object.assign({}, payloadObj, { signature: 'nope' }))).toString('base64');
+      const rb = await payments.esewaVerify(bad, null);
+      assert.equal(rb.ok, false);
+      assert.equal(rb.reason, 'bad-signature');
+
+      // A signed but NOT-complete payload must not be treated as paid.
+      const canceled = Object.assign({}, payloadObj, { status: 'CANCELED' });
+      const cmsg = msg;
+      canceled.signature = payments.esewaSignature(cmsg, 'test-secret');
+      const encC = Buffer.from(JSON.stringify(canceled)).toString('base64');
+      const rc = await payments.esewaVerify(encC, null);
+      assert.equal(rc.paid, false, 'a CANCELED transaction must not confirm an order');
+    } finally {
+      if (savedSecret === undefined) delete process.env.ESEWA_SECRET_KEY; else process.env.ESEWA_SECRET_KEY = savedSecret;
+      if (savedCode === undefined) delete process.env.ESEWA_PRODUCT_CODE; else process.env.ESEWA_PRODUCT_CODE = savedCode;
+    }
+  });
+
+  await test('Khalti amount is sent in paisa and verified back to rupees', async () => {
+    const payments = require('./src/payments');
+    assert.equal(payments.toPaisa(1234), 123400, 'rupees -> paisa (x100)');
+    assert.equal(payments.toPaisa(99.5), 9950);
+    assert.equal(payments.toPaisa(0), 0);
+  });
+
+  await test('duplicate payment callbacks confirm an order at most once', async () => {
+    const pkgs = await req('GET', '/api/packages');
+    const created = await req('POST', '/api/orders', { body: {
+      name: 'Dup Test', email: 'dup@test.local', items: [{ slug: pkgs.data.items[0].slug, qty: 1 }]
+    }});
+    const ref = created.data.order.reference;
+    const pay = await req('POST', `/api/orders/${ref}/pay`, { body: { method: 'mock' } });
+    const u = new URL(pay.data.payment.redirectUrl);
+    const body = { method: 'mock', mock_sig: u.searchParams.get('mock_sig'), mock_ts: u.searchParams.get('mock_ts') };
+
+    // Fire the SAME valid callback twice (double-click / gateway retry).
+    const first = await req('POST', `/api/orders/${ref}/verify`, { body });
+    const second = await req('POST', `/api/orders/${ref}/verify`, { body });
+    assert.equal(first.status, 200);
+    assert.equal(first.data.paid, true);
+    assert.equal(first.data.duplicate, false, 'the first callback is the real confirmation');
+    assert.equal(second.status, 200, 'a duplicate must not error');
+    assert.equal(second.data.paid, true);
+    assert.equal(second.data.duplicate, true, 'the second callback must be flagged as a duplicate');
+    const after = await req('GET', '/api/orders/' + ref);
+    assert.equal(after.data.order.payment_status, 'paid');
+  });
+
+  await test('a failed callback does not downgrade an already-paid order', async () => {
+    const pkgs = await req('GET', '/api/packages');
+    const created = await req('POST', '/api/orders', { body: {
+      name: 'NoDowngrade', email: 'nodg@test.local', items: [{ slug: pkgs.data.items[0].slug, qty: 1 }]
+    }});
+    const ref = created.data.order.reference;
+    const pay = await req('POST', `/api/orders/${ref}/pay`, { body: { method: 'mock' } });
+    const u = new URL(pay.data.payment.redirectUrl);
+    await req('POST', `/api/orders/${ref}/verify`, { body: {
+      method: 'mock', mock_sig: u.searchParams.get('mock_sig'), mock_ts: u.searchParams.get('mock_ts')
+    }});
+    // Now a forged callback arrives for the same, already-paid order.
+    const bad = await req('POST', `/api/orders/${ref}/verify`, { body: { method: 'mock', mock_sig: 'FORGED', mock_ts: '1' } });
+    assert.equal(bad.status, 400);
+    const after = await req('GET', '/api/orders/' + ref);
+    assert.equal(after.data.order.payment_status, 'paid', 'a forged retry must not undo a real payment');
+  });
+
+  await test('health reports payment wiring without leaking secrets', async () => {
+    const r = await req('GET', '/api/health');
+    assert.equal(r.status, 200);
+    assert.ok(r.data.payments, 'health must include a payments block');
+    assert.ok(['sandbox', 'production'].includes(r.data.payments.env), 'env must be reported');
+    assert.equal(typeof r.data.payments.mockAllowed, 'boolean');
+    assert.ok(r.data.payments.esewa && typeof r.data.payments.esewa.configured === 'boolean');
+    assert.ok(r.data.payments.khalti && typeof r.data.payments.khalti.configured === 'boolean');
+    // No secret value may appear anywhere in the payload.
+    const blob = JSON.stringify(r.data);
+    assert.ok(!/secret/i.test(blob) || !/[a-f0-9]{24,}/i.test(blob), 'no long secret-looking value in health');
   });
 
   // Cleanup

@@ -18,10 +18,10 @@ const {
 } = require('./auth');
 const { notifyBooking, notifyCustomer } = require('./notify');
 const {
-  recomputeTotals, createOrder, getOrder, getOrderByReference,
+  recomputeTotals, createOrder, getOrder, getOrderByReference, confirmPaid,
   listOrders, updateOrder, orderStats, newReference
 } = require('./commerce');
-const { listProviders, startPayment, verifyPayment } = require('./payments');
+const { listProviders, startPayment, verifyPayment, methodAllowed, status: paymentStatus } = require('./payments');
 const { writeInvoice } = require('./invoice');
 
 const SITE = {
@@ -356,7 +356,10 @@ function publicRouter() {
       env: envPresence,
       // Booking notifications are optional; report whether they are wired up so
       // an operator can see at a glance (never reveals secret values).
-      notifications: require('./notify').status()
+      notifications: require('./notify').status(),
+      // Payment wiring: env, whether mock is allowed, which gateways are
+      // configured, and the ACTUAL gateway host in use. Never a secret value.
+      payments: paymentStatus()
     });
   });
 
@@ -584,6 +587,11 @@ function publicRouter() {
     if (order.status === 'cancelled') return bad(res, 'This order has been cancelled');
 
     const method = str((req.body || {}).method, 20) || 'mock';
+    // Reject a method this environment does not offer (e.g. mock in production)
+    // BEFORE any provider call — a disabled method must never start a payment.
+    if (!methodAllowed(method)) {
+      return res.status(400).json({ error: 'That payment method is not available on this environment.', reason: 'method-disabled' });
+    }
     const result = await startPayment(method, order);
     if (!result.ok) {
       return res.status(400).json({ error: result.message || 'Payment could not be started', reason: result.reason });
@@ -599,29 +607,48 @@ function publicRouter() {
     if (!order) return res.status(404).json({ error: 'Order not found' });
     const evidence = req.body || {};
     const method = order.payment_method || str(evidence.method, 20) || 'mock';
+
+    if (!methodAllowed(method)) {
+      return res.status(400).json({ error: 'That payment method is not available on this environment.', reason: 'method-disabled' });
+    }
+
     const result = await verifyPayment(method, order, evidence);
     if (!result.ok) {
-      await updateOrder(order.id, { payment_status: 'failed' });
+      // Never downgrade an already-paid order to 'failed' — a replayed or
+      // malformed callback must not undo a real, verified payment.
+      if (order.payment_status !== 'paid') await updateOrder(order.id, { payment_status: 'failed' });
       return res.status(400).json({ error: 'Payment verification failed', reason: result.reason });
     }
+
     // Amount cross-check: a valid signature on the WRONG amount is still a fraud
     // attempt, so the verified amount must equal the stored order total.
     if (result.amount !== undefined && Number(result.amount) !== Number(order.total)) {
-      await updateOrder(order.id, { payment_status: 'failed' });
+      if (order.payment_status !== 'paid') await updateOrder(order.id, { payment_status: 'failed' });
       return res.status(400).json({ error: 'Payment amount does not match the order total' });
     }
+
     if (result.paid) {
-      // A completed online payment IS a confirmed order — keep the workflow
-      // status consistent with the manual "mark paid" path (which also
-      // confirms). Otherwise a paid order would sit in 'pending' forever.
-      const updated = await updateOrder(order.id, {
-        payment_status: 'paid', status: 'confirmed', payment_ref: result.providerRef || ''
+      // ATOMIC confirm: guarded by `payment_status != 'paid'`, so two concurrent
+      // callbacks (double-click, gateway retry, replay) can confirm an order at
+      // most once. `alreadyPaid` tells us a duplicate arrived harmlessly.
+      const { confirmed, order: updated } = await confirmPaid(order.id, {
+        providerRef: result.providerRef || '',
+        method
       });
-      // Best-effort customer receipt (no-op when email is unconfigured).
-      try { await notifyCustomer(updated); } catch (_e) { /* never blocks payment */ }
-      return res.json({ ok: true, paid: true, order: { reference: updated.reference, payment_status: updated.payment_status, status: updated.status } });
+      if (confirmed && updated) {
+        // Best-effort customer receipt — sent exactly once, on first confirm.
+        try { await notifyCustomer(updated); } catch (_e) { /* never blocks payment */ }
+      }
+      return res.json({
+        ok: true,
+        paid: true,
+        duplicate: !confirmed,
+        order: { reference: updated.reference, payment_status: updated.payment_status, status: updated.status }
+      });
     }
-    // Bank transfer / not-yet-confirmed: leave it unpaid for an admin to confirm.
+
+    // Bank transfer / a signed-but-not-complete gateway status: leave it unpaid
+    // for an admin to confirm. Never auto-pay from a browser redirect alone.
     res.json({ ok: true, paid: false, reason: result.reason || 'awaiting-confirmation' });
   });
 

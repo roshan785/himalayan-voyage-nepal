@@ -13,35 +13,78 @@
  *    clear `{ ok: false, reason: 'not-configured' }` instead of throwing, so a
  *    deployment without credentials degrades gracefully instead of 500-ing.
  *
- * 3. "MOCK" IS THE DEFAULT. It produces a real, verifiable payment flow with no
- *    external dependency, which is exactly what the automated tests exercise.
- *    Live eSewa/Khalti adapters are implemented from their documented APIs but
- *    are NOT claimed to work until they are run against real sandbox keys —
- *    see PROVIDER_STATUS below for an honest per-provider statement.
+ * 3. SANDBOX AND PRODUCTION ARE SELECTED BY `PAYMENT_ENV`, never guessed. Every
+ *    provider base URL is derived from that one switch, so pointing the app at
+ *    eSewa/Khalti's sandbox or live host is a single, explicit, reversible
+ *    environment change — credentials and URLs can never drift apart.
+ *
+ * 4. THE BROWSER REDIRECT IS NEVER TRUSTED AS PROOF. A callback only supplies
+ *    EVIDENCE; the server re-derives it:
+ *      • eSewa  — the `data` blob's HMAC is re-computed with the merchant
+ *                 secret, AND the transaction is re-checked against eSewa's own
+ *                 transaction-status API.
+ *      • Khalti — the `pidx` is confirmed through Khalti's server-to-server
+ *                 lookup endpoint.
+ *    Only after that does the order route mark an order paid (and atomically).
+ *
+ * 5. `mock` IS A DEVELOPMENT PROVIDER. It is hard-disabled whenever
+ *    PAYMENT_ENV=production unless ALLOW_MOCK_PAYMENTS=true is set explicitly,
+ *    so a live site can never be "paid" with a self-produced signature.
  *
  * PROVIDERS
- *   mock    — offline, always available. Simulates a redirect + a signed callback.
- *   esewa   — eSewa ePay v2 (form POST + HMAC-SHA256 signature verification).
- *   khalti  — Khalti ePayment v2 (server-initiated initiate + lookup verify).
+ *   mock    — offline, development only (blocked in production).
+ *   esewa   — eSewa ePay v2 (signed form POST + HMAC verification + status API).
+ *   khalti  — Khalti ePayment v2 (server initiate + server lookup).
+ *   bank    — manual transfer, confirmed by an admin (never auto-paid).
  *
- * SECURITY
- *   • Amounts are ALWAYS recomputed server-side from the order before a payment
- *     is started or verified — `verifySignature` never trusts the posted amount.
- *   • The signature scheme is constant-time compared to avoid timing leaks.
- *   • The callback URL is built from a configured PUBLIC_BASE_URL, never from a
- *     client-supplied host (open-redirect / host-header-injection defence).
+ * HONEST STATUS: `PROVIDER_STATUS[].live` is a statement about what has been
+ * VERIFIED, not about what is implemented. It stays false until a real sandbox
+ * run has been performed with the user's own credentials.
  */
 
 const crypto = require('crypto');
 
 const PAYMENT_METHODS = ['mock', 'esewa', 'khalti', 'bank'];
 
+/**
+ * Which environment's gateway hosts to use.
+ *
+ * DEFAULT IS DERIVED FROM THE HOST, not hard-coded, because a live site that
+ * silently defaults to "sandbox" would leave the development-only mock provider
+ * enabled — letting anyone mark an order paid with a self-produced signature.
+ * So: production is the default whenever we are clearly NOT on a dev machine
+ * (NODE_ENV=production, or running on Render, which sets RENDER=true), and
+ * sandbox otherwise. An explicit PAYMENT_ENV always wins.
+ */
+function paymentEnv() {
+  const v = String(process.env.PAYMENT_ENV || '').trim().toLowerCase();
+  if (v === 'production' || v === 'sandbox') return v;
+  const looksLive = process.env.NODE_ENV === 'production'
+    || String(process.env.RENDER || '').toLowerCase() === 'true';
+  return looksLive ? 'production' : 'sandbox';
+}
+
+function isProduction() {
+  return paymentEnv() === 'production';
+}
+
+/**
+ * May the development-only `mock` provider be offered?
+ * Never in production, unless an operator deliberately opts in for a rehearsal
+ * (ALLOW_MOCK_PAYMENTS=true). This is the guard that stops a live site from
+ * being able to "pay" an order with a signature it produced itself.
+ */
+function mockAllowed() {
+  if (!isProduction()) return true;
+  return String(process.env.ALLOW_MOCK_PAYMENTS || '').trim().toLowerCase() === 'true';
+}
+
 /** Honest status per provider — shown by /api/payments/providers. */
 const PROVIDER_STATUS = {
-  mock: { live: false, note: 'Offline test provider — always available, no real money moves.' },
-  esewa: { live: false, note: 'eSewa ePay v2 adapter implemented from public docs; requires ES test/prod keys + a verification run against eSewa sandbox before it is production-proven.' },
-  khalti: { live: false, note: 'Khalti ePayment v2 adapter implemented from public docs; requires KHALTI_SECRET_KEY + a verification run against Khalti sandbox before it is production-proven.' },
-  bank: { live: false, note: 'Manual bank transfer — the order is marked awaiting-confirmation and an admin marks it paid.' }
+  mock: { live: false, note: 'Development-only test provider. Blocked automatically when PAYMENT_ENV=production.' },
+  esewa: { live: false, note: 'eSewa ePay v2 adapter (signed form POST + HMAC verify + server transaction-status check). Requires ESEWA_* env vars and a sandbox run with your merchant credentials before it is production-proven.' },
+  khalti: { live: false, note: 'Khalti ePayment v2 adapter (server initiate + server lookup verify). Requires KHALTI_SECRET_KEY and a sandbox run before it is production-proven.' },
+  bank: { live: false, note: 'Manual bank transfer — an admin confirms it; the site never auto-marks these paid.' }
 };
 
 /** The site's public origin, used to build absolute callback URLs. */
@@ -57,17 +100,43 @@ function safeEqual(a, b) {
   try { return crypto.timingSafeEqual(ba, bb); } catch (_e) { return false; }
 }
 
+/** fetch() with a hard timeout so a slow gateway can never hang a request. */
+async function fetchJson(url, options = {}, timeoutMs = 12000) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetch(url, Object.assign({}, options, { signal: controller.signal }));
+    const text = await res.text();
+    let data = {};
+    try { data = text ? JSON.parse(text) : {}; } catch (_e) { data = { raw: text }; }
+    return { ok: res.ok, status: res.status, data };
+  } catch (err) {
+    return { ok: false, status: 0, data: {}, error: err && err.name === 'AbortError' ? 'timeout' : 'network' };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 /* ── eSewa ePay v2 ─────────────────────────────────────────────────────────
+   Sandbox host : https://rc-epay.esewa.com.np   (eSewa's test/live RC host)
+   Production   : https://epay.esewa.com.np
+   A test product code ("EPAYTEST") with its published secret exists for the
+   integration phase — it never moves real money.
+
    Signature: base64(HMAC-SHA256(message, secret)) where message is
-   "total_amount=..,transaction_uuid=..,product_code=..".
-   The success callback is signed the same way over the fields it returns, and
-   the returned base64 JSON contains `status`, `total_amount`, `transaction_uuid`. */
+   "total_amount=<amt>,transaction_uuid=<uuid>,product_code=<code>".
+   The success callback returns base64 JSON whose `signature` covers the fields
+   listed in `signed_field_names`. */
 
 function esewaConfig() {
+  const prod = isProduction();
   return {
     productCode: String(process.env.ESEWA_PRODUCT_CODE || '').trim(),
     secret: String(process.env.ESEWA_SECRET_KEY || '').trim(),
-    base: String(process.env.ESEWA_BASE_URL || 'https://rc-epay.esewa.com.np').replace(/\/+$/, '')
+    // A per-environment host, overridable but never guessed from credentials.
+    base: String(
+      process.env.ESEWA_BASE_URL || (prod ? 'https://epay.esewa.com.np' : 'https://rc-epay.esewa.com.np')
+    ).replace(/\/+$/, '')
   };
 }
 
@@ -79,7 +148,7 @@ function esewaSignature(message, secret) {
 function esewaStart(order) {
   const cfg = esewaConfig();
   if (!cfg.productCode || !cfg.secret) {
-    return { ok: false, reason: 'not-configured', provider: 'esewa', message: 'eSewa keys are not configured.' };
+    return { ok: false, reason: 'not-configured', provider: 'esewa', message: 'eSewa product code / secret are not configured.' };
   }
   const base = publicBaseUrl();
   if (!base) {
@@ -92,6 +161,7 @@ function esewaStart(order) {
   return {
     ok: true,
     provider: 'esewa',
+    env: paymentEnv(),
     mode: 'form-post',
     action: `${cfg.base}/api/epay/main/v2/form`,
     fields: {
@@ -102,8 +172,8 @@ function esewaStart(order) {
       product_code: cfg.productCode,
       product_service_charge: '0',
       product_delivery_charge: '0',
-      success_url: `${base}/order.html?ref=${encodeURIComponent(uuid)}&status=success`,
-      failure_url: `${base}/order.html?ref=${encodeURIComponent(uuid)}&status=failure`,
+      success_url: `${base}/order.html?ref=${encodeURIComponent(uuid)}&status=esewa-success`,
+      failure_url: `${base}/order.html?ref=${encodeURIComponent(uuid)}&status=esewa-failure`,
       signed_field_names: 'total_amount,transaction_uuid,product_code',
       signature
     }
@@ -111,12 +181,44 @@ function esewaStart(order) {
 }
 
 /**
- * Decode + verify an eSewa success callback.
- * The callback arrives as base64 JSON in `?data=`. We re-derive the signature
- * over the returned signed fields and compare against the returned signature —
- * a forged callback that did not know the secret cannot produce a match.
+ * Ask eSewa's own server whether a transaction succeeded.
+ * This is the independent check that does not depend on anything the browser
+ * sent: it re-queries the gateway with the merchant's product code.
+ * Returns { ok, status, amount, reference, providerRef } — `ok` means the call
+ * itself worked; callers must still inspect `status`.
  */
-function esewaVerify(encodedData) {
+async function esewaTransactionStatus(reference, amount) {
+  const cfg = esewaConfig();
+  if (!cfg.productCode) return { ok: false, reason: 'not-configured' };
+  const url = `${cfg.base}/api/epay/transaction/status/` +
+    `?product_code=${encodeURIComponent(cfg.productCode)}` +
+    `&total_amount=${encodeURIComponent(String(amount))}` +
+    `&transaction_uuid=${encodeURIComponent(String(reference))}`;
+  const res = await fetchJson(url, { method: 'GET' });
+  if (!res.ok) return { ok: false, reason: res.error || 'status-api-error', status: res.status, payload: res.data };
+  return {
+    ok: true,
+    status: String(res.data.status || ''),
+    total_amount: Number(res.data.total_amount),
+    reference: String(res.data.transaction_uuid || reference),
+    providerRef: String(res.data.ref_id || res.data.transaction_code || '')
+  };
+}
+
+/**
+ * Verify an eSewa success callback.
+ *
+ * Two independent checks must both pass:
+ *   1. the returned JSON's HMAC matches the merchant secret, and
+ *   2. the gateway's own transaction-status API reports status === COMPLETE
+ *      with the expected amount.
+ *
+ * A forged callback that did not know the secret fails step 1; a genuine but
+ * non-complete transaction (CANCELED/PENDING) fails step 2. `paid` is set ONLY
+ * when both pass — the previous version never set `paid` at all, so a real
+ * success could never confirm an order.
+ */
+async function esewaVerify(encodedData, order) {
   const cfg = esewaConfig();
   let payload;
   try {
@@ -126,33 +228,74 @@ function esewaVerify(encodedData) {
   }
   if (!cfg.secret) return { ok: false, reason: 'not-configured', payload };
 
+  // ── Check 1: signature ──
   const signedNames = String(payload.signed_field_names || 'total_amount,transaction_uuid,product_code')
     .split(',').map((s) => s.trim()).filter(Boolean);
   const message = signedNames.map((f) => `${f}=${payload[f]}`).join(',');
   const expected = esewaSignature(message, cfg.secret);
-  const provided = String(payload.signature || '');
-  if (!safeEqual(expected, provided)) return { ok: false, reason: 'bad-signature', payload };
+  if (!safeEqual(expected, String(payload.signature || ''))) {
+    return { ok: false, reason: 'bad-signature', payload };
+  }
+
+  const reference = String(payload.transaction_uuid || '');
+  const amount = Number(payload.total_amount);
+  const status = String(payload.status || '').toUpperCase();
+
+  // A signed callback can still describe a non-success state.
+  if (status && status !== 'COMPLETE') {
+    return { ok: true, provider: 'esewa', paid: false, reason: 'status-' + status.toLowerCase(), reference, amount, status };
+  }
+
+  // ── Check 2: the gateway's own view of the transaction ──
+  // Only meaningful once we know which order/reference we are reconciling.
+  if (order) {
+    const st = await esewaTransactionStatus(reference || order.reference, order.total);
+    if (st.ok) {
+      const stStatus = String(st.status || '').toUpperCase();
+      if (stStatus !== 'COMPLETE') {
+        return { ok: true, provider: 'esewa', paid: false, reason: 'status-api-' + (stStatus.toLowerCase() || 'unknown'), reference, amount, status: stStatus };
+      }
+    } else if (st.reason && st.reason !== 'not-configured') {
+      // Could not independently confirm — do NOT claim paid. The admin can
+      // reconcile manually; a false "paid" is worse than a delayed one.
+      return { ok: false, reason: 'status-api-unavailable', reference, amount, status };
+    }
+  }
 
   return {
     ok: true,
     provider: 'esewa',
-    reference: String(payload.transaction_uuid || ''),
-    amount: Number(payload.total_amount),
+    paid: true,
+    reference,
+    amount,
     providerRef: String(payload.transaction_code || ''),
-    status: String(payload.status || '')
+    status: 'COMPLETE'
   };
 }
 
 /* ── Khalti ePayment v2 ────────────────────────────────────────────────────
-   Server-initiated: POST /epayment/initiate/ with an Authorization: Key <secret>.
-   Response carries a `pidx`; the browser is redirected to `payment_url`. The
-   server then confirms with POST /epayment/lookup/ { pidx }. */
+   Sandbox host    : https://dev.khalti.com/api/v2
+   Production host : https://khalti.com/api/v2
+   The previous default ("a.khalti.com") is not a documented endpoint — with
+   real keys every call would have failed. The host is now chosen by
+   PAYMENT_ENV and nothing else.
+
+   Flow: POST /epayment/initiate/ (→ pidx + payment_url), then the browser
+   returns and the server confirms with POST /epayment/lookup/ { pidx }. */
 
 function khaltiConfig() {
+  const prod = isProduction();
   return {
     secret: String(process.env.KHALTI_SECRET_KEY || '').trim(),
-    base: String(process.env.KHALTI_BASE_URL || 'https://a.khalti.com/api/v2').replace(/\/+$/, '')
+    base: String(
+      process.env.KHALTI_BASE_URL || (prod ? 'https://khalti.com/api/v2' : 'https://dev.khalti.com/api/v2')
+    ).replace(/\/+$/, '')
   };
+}
+
+/** Khalti expects the amount in paisa (rupees × 100), as an integer string/int. */
+function toPaisa(rupees) {
+  return Math.round(Number(rupees) * 100);
 }
 
 /** Ask Khalti to start a payment. Returns the redirect URL + pidx. */
@@ -168,7 +311,7 @@ async function khaltiStart(order) {
   const body = {
     return_url: `${base}/order.html?ref=${encodeURIComponent(order.reference)}&status=khalti-return`,
     website_url: base,
-    amount: Math.round(Number(order.total) * 100), // Khalti expects paisa
+    amount: toPaisa(order.total),
     purchase_order_id: order.reference,
     purchase_order_name: `Himalayan Voyage order ${order.reference}`,
     customer_info: {
@@ -177,59 +320,68 @@ async function khaltiStart(order) {
       phone: order.customer_phone || ''
     }
   };
-  const res = await fetch(`${cfg.base}/epayment/initiate/`, {
+  const res = await fetchJson(`${cfg.base}/epayment/initiate/`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Key ${cfg.secret}` },
     body: JSON.stringify(body)
   });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok || !data.pidx) {
-    return { ok: false, reason: 'provider-error', provider: 'khalti', status: res.status, message: data.detail || data.error_key || 'Khalti initiate failed' };
+  if (!res.ok || !res.data.pidx) {
+    return {
+      ok: false, reason: 'provider-error', provider: 'khalti', status: res.status,
+      message: res.data.detail || res.data.error_key || res.data.raw || `Khalti initiate failed (${res.status})`
+    };
   }
-  return { ok: true, provider: 'khalti', mode: 'redirect', redirectUrl: data.payment_url, pidx: data.pidx };
+  return { ok: true, provider: 'khalti', env: paymentEnv(), mode: 'redirect', redirectUrl: res.data.payment_url, pidx: res.data.pidx };
 }
 
-/** Confirm a Khalti payment by pidx. */
+/**
+ * Confirm a Khalti payment by pidx through the server-to-server lookup.
+ * `paid` is true only for a Completed transaction.
+ */
 async function khaltiVerify(pidx) {
   const cfg = khaltiConfig();
   if (!cfg.secret) return { ok: false, reason: 'not-configured' };
-  const res = await fetch(`${cfg.base}/epayment/lookup/`, {
+  if (!pidx) return { ok: false, reason: 'missing-pidx' };
+  const res = await fetchJson(`${cfg.base}/epayment/lookup/`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Key ${cfg.secret}` },
     body: JSON.stringify({ pidx })
   });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) return { ok: false, reason: 'provider-error', status: res.status, payload: data };
-  const paid = ['Completed', 'COMPLETED'].includes(String(data.status));
+  if (!res.ok) return { ok: false, reason: res.error || 'provider-error', status: res.status, payload: res.data };
+  const status = String(res.data.status || '');
+  const paid = ['Completed', 'COMPLETED'].includes(status);
   return {
     ok: true,
     provider: 'khalti',
     paid,
-    reference: String(data.purchase_order_id || ''),
-    amount: Number(data.total_amount) / 100, // back to rupees
-    providerRef: String(data.transaction_id || pidx),
-    status: String(data.status || '')
+    reason: paid ? undefined : 'status-' + status.toLowerCase(),
+    reference: String(res.data.purchase_order_id || ''),
+    amount: Number(res.data.total_amount) / 100, // paisa -> rupees
+    providerRef: String(res.data.transaction_id || pidx),
+    status
   };
 }
 
-/* ── Mock provider (default; offline, fully verifiable) ────────────────────
-   Simulates the exact shape of a real gateway: `start()` returns a signed
-   redirect, and `verify()` checks the signature and the amount against the
-   order. This is what the automated tests drive. */
+/* ── Mock provider (development only; hard-blocked in production) ─────────── */
 
 function mockStart(order) {
+  if (!mockAllowed()) {
+    return { ok: false, reason: 'mock-disabled', provider: 'mock', message: 'Test payments are disabled on this environment.' };
+  }
   const base = publicBaseUrl() || 'http://127.0.0.1';
   const ts = Date.now();
   const sig = esewaSignature(`${order.reference}:${order.total}:${ts}`, 'mock-secret');
   return {
     ok: true,
     provider: 'mock',
+    env: paymentEnv(),
     mode: 'redirect',
     redirectUrl: `${base}/order.html?ref=${encodeURIComponent(order.reference)}&status=paid&mock_sig=${encodeURIComponent(sig)}&mock_ts=${ts}`
   };
 }
 
 function mockVerify(reference, total, signature, ts) {
+  if (!mockAllowed()) return { ok: false, reason: 'mock-disabled' };
   const expected = esewaSignature(`${reference}:${total}:${ts}`, 'mock-secret');
   if (!safeEqual(expected, String(signature || ''))) return { ok: false, reason: 'bad-signature' };
   return { ok: true, provider: 'mock', paid: true, reference, amount: Number(total), providerRef: 'MOCK-' + String(ts).slice(-8), status: 'COMPLETED' };
@@ -241,12 +393,23 @@ function mockVerify(reference, total, signature, ts) {
 function listProviders() {
   const esewaReady = Boolean(esewaConfig().productCode && esewaConfig().secret && publicBaseUrl());
   const khaltiReady = Boolean(khaltiConfig().secret && publicBaseUrl());
-  return [
-    { id: 'mock', label: 'Test payment (sandbox)', configured: true, live: false, note: PROVIDER_STATUS.mock.note },
-    { id: 'esewa', label: 'eSewa', configured: esewaReady, live: false, note: PROVIDER_STATUS.esewa.note },
-    { id: 'khalti', label: 'Khalti', configured: khaltiReady, live: false, note: PROVIDER_STATUS.khalti.note },
+  const mockReady = mockAllowed();
+  const items = [
+    { id: 'esewa', label: 'eSewa', configured: esewaReady, live: false, env: paymentEnv(), note: PROVIDER_STATUS.esewa.note },
+    { id: 'khalti', label: 'Khalti', configured: khaltiReady, live: false, env: paymentEnv(), note: PROVIDER_STATUS.khalti.note },
     { id: 'bank', label: 'Bank transfer', configured: true, live: false, note: PROVIDER_STATUS.bank.note }
   ];
+  // The development provider is only advertised where it is actually usable.
+  if (mockReady) {
+    items.unshift({ id: 'mock', label: 'Test payment (sandbox)', configured: true, live: false, env: paymentEnv(), note: PROVIDER_STATUS.mock.note });
+  }
+  return items;
+}
+
+/** Is a given method usable on this environment? */
+function methodAllowed(method) {
+  if (method === 'mock') return mockAllowed();
+  return PAYMENT_METHODS.includes(method);
 }
 
 /**
@@ -256,10 +419,13 @@ function listProviders() {
  * Never throws for a missing config — the caller turns `ok:false` into a 400.
  */
 async function startPayment(method, order) {
+  if (!methodAllowed(method)) {
+    return { ok: false, reason: 'method-disabled', provider: method, message: 'That payment method is not available on this environment.' };
+  }
   switch (method) {
     case 'esewa': return esewaStart(order);
     case 'khalti': return khaltiStart(order);
-    case 'bank': return { ok: true, provider: 'bank', mode: 'manual', message: 'Transfer to the account shown, then wait for confirmation.' };
+    case 'bank': return { ok: true, provider: 'bank', env: paymentEnv(), mode: 'manual', message: 'Transfer to the account shown, then wait for confirmation.' };
     case 'mock':
     default: return mockStart(order);
   }
@@ -268,10 +434,12 @@ async function startPayment(method, order) {
 /**
  * Verify a payment result. The caller passes ONLY the provider's returned
  * evidence; the amount is cross-checked against the order inside the route.
+ * `paid:true` is a statement that the GATEWAY confirmed payment server-side.
  */
 async function verifyPayment(method, order, evidence = {}) {
+  if (!methodAllowed(method)) return { ok: false, reason: 'method-disabled' };
   switch (method) {
-    case 'esewa': return esewaVerify(evidence.data);
+    case 'esewa': return esewaVerify(evidence.data, order);
     case 'khalti': return khaltiVerify(evidence.pidx);
     case 'mock': return mockVerify(order.reference, order.total, evidence.mock_sig, evidence.mock_ts);
     case 'bank': return { ok: true, provider: 'bank', paid: false, reason: 'manual-confirmation-required' };
@@ -279,15 +447,36 @@ async function verifyPayment(method, order, evidence = {}) {
   }
 }
 
+/** Non-secret status for /api/health (helps an operator see what is wired). */
+function status() {
+  const esewa = esewaConfig();
+  const khalti = khaltiConfig();
+  return {
+    env: paymentEnv(),
+    mockAllowed: mockAllowed(),
+    publicBaseUrlSet: Boolean(publicBaseUrl()),
+    esewa: { configured: Boolean(esewa.productCode && esewa.secret), host: esewa.base },
+    khalti: { configured: Boolean(khalti.secret), host: khalti.base }
+  };
+}
+
 module.exports = {
   PAYMENT_METHODS,
   PROVIDER_STATUS,
   listProviders,
+  methodAllowed,
   startPayment,
   verifyPayment,
+  status,
   publicBaseUrl,
+  paymentEnv,
+  isProduction,
+  mockAllowed,
+  toPaisa,
   // exported for tests
   esewaSignature,
   esewaVerify,
+  esewaTransactionStatus,
+  khaltiVerify,
   mockVerify
 };

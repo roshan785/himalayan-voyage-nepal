@@ -92,6 +92,8 @@
       method: params.get('method') || 'mock',
       mock_sig: params.get('mock_sig') || '',
       mock_ts: params.get('mock_ts') || '',
+      // eSewa delivers its signed payload as base64 JSON in ?data=; Khalti
+      // returns ?pidx= on the return_url. The server re-checks both.
       data: params.get('data') || '',
       pidx: params.get('pidx') || params.get('transaction_uuid') || ''
     };

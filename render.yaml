@@ -14,6 +14,13 @@
 # Production variables therefore live ONLY in the dashboard:
 #   Dashboard -> himalayan-voyage-nepal -> Environment
 #     DATABASE_URL, JWT_SECRET, ADMIN_PASSWORD, ADMIN_EMAIL, NODE_VERSION
+#   And — for real payments (see docs/REAL-PAYMENTS-SETUP.md):
+#     PUBLIC_BASE_URL, PAYMENT_ENV, ESEWA_PRODUCT_CODE, ESEWA_SECRET_KEY,
+#     KHALTI_SECRET_KEY
+#
+# PAYMENT_ENV controls the gateway hosts ("sandbox" | "production"). A
+# Blueprint-declared value here would silently override the dashboard, so it is
+# deliberately NOT listed below — set it in the dashboard, like the others.
 
 services:
   - type: web

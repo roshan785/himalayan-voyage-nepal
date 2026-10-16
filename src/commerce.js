@@ -126,6 +126,20 @@ async function ensureCommerceSchema(driver) {
   } else {
     driver.raw.exec(ddl);
   }
+  // A partial UNIQUE index so one gateway transaction can back at most one
+  // order. Added separately (and non-fatally) because on an EXISTING database a
+  // pre-existing duplicate would abort the whole DDL batch and stop the server
+  // from booting. If it cannot be created we log and carry on — the atomic
+  // confirmPaid() guard still prevents double-confirmation.
+  try {
+    if (driver.kind === 'postgres') {
+      await driver.raw.query("CREATE UNIQUE INDEX IF NOT EXISTS uq_orders_payment_ref ON orders(payment_ref) WHERE payment_ref <> ''");
+    } else {
+      driver.raw.exec("CREATE UNIQUE INDEX IF NOT EXISTS uq_orders_payment_ref ON orders(payment_ref) WHERE payment_ref <> ''");
+    }
+  } catch (err) {
+    console.warn('[commerce] could not add payment_ref unique index (duplicates present?):', err.message);
+  }
   return driver.kind;
 }
 
@@ -261,6 +275,32 @@ async function getOrder(id) {
   return Object.assign({}, row, { items: await itemsFor(id) });
 }
 
+/**
+ * Atomically mark an order paid, at most ONCE.
+ *
+ * The UPDATE is guarded by `payment_status != 'paid'` (and a non-empty provider
+ * reference), so two concurrent gateway callbacks for the same order can never
+ * both "succeed": the first writes, the second matches zero rows and is told so.
+ * This is what prevents a duplicate confirmation / double receipt from a
+ * repeated or replayed callback — the check and the write are one statement,
+ * not a read-then-write race.
+ *
+ * @returns {{confirmed: boolean, order: object|null, alreadyPaid: boolean}}
+ */
+async function confirmPaid(id, { providerRef = '', method = '' } = {}) {
+  const isPg = require('./db').driver.kind === 'postgres';
+  const nowExpr = isPg ? "to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS')" : "datetime('now')";
+  const info = await run(
+    `UPDATE orders
+        SET payment_status = 'paid', status = 'confirmed', payment_ref = ?, payment_method = ?,
+            updated_at = ${nowExpr}
+      WHERE id = ? AND payment_status != 'paid'`,
+    [String(providerRef || '').slice(0, 120), String(method || '').slice(0, 40), id]
+  );
+  const order = await getOrder(id);
+  return { confirmed: Number(info.changes) > 0, order, alreadyPaid: Boolean(order && order.payment_status === 'paid') };
+}
+
 /** Fetch one order by its public reference (used by the order-confirmation page). */
 async function getOrderByReference(reference) {
   const row = await get('SELECT * FROM orders WHERE reference = ?', [String(reference || '').slice(0, 60)]);
@@ -376,6 +416,7 @@ module.exports = {
   createOrder,
   getOrder,
   getOrderByReference,
+  confirmPaid,
   listOrders,
   updateOrder,
   orderStats,
