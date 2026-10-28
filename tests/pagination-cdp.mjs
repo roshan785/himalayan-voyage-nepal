@@ -299,6 +299,154 @@ await sleep(500);
 const pBack = await snapshot();
 check('Prev goes back one page', pBack.activePage, String(pages - 1));
 
+// ── Keyboard focus retention ──────────────────────────────────────────────
+// renderPager() rebuilds pager.innerHTML on every page change, so the button
+// the user just activated is destroyed. If focus is not restored,
+// document.activeElement falls back to <body> and a keyboard user is stranded:
+// they cannot press Enter again to reach the next page. Focus must survive the
+// re-render and land on a LIVE (non-disabled) control inside the pager.
+async function focusAndClick(role) {
+  return evaluate(`(() => {
+    const btns = () => [...document.querySelectorAll('#package-pager .pager__btn')];
+    const target = btns().find((b) => /${role}/i.test(b.textContent));
+    if (!target) return Promise.resolve({ missing: true });
+    target.focus();
+    const hadFocus = document.activeElement === target;
+    target.click();
+    return new Promise((resolve) => setTimeout(() => {
+      const active = document.activeElement;
+      resolve({
+        hadFocus,
+        // Where focus ended up. A dead body/null means the user lost their place.
+        activeInPager: !!(active && active.closest && active.closest('#package-pager')),
+        activeLabel: active ? (active.textContent || '').trim() : null,
+        activeDisabled: !!(active && active.disabled),
+      });
+    }, 450));
+  })()`);
+}
+
+const focusNext = await focusAndClick('Next');
+check('Next button is focusable before click', focusNext.hadFocus, true);
+check('focus stays inside the pager after clicking Next', focusNext.activeInPager, true);
+check('focus never lands on a disabled control', focusNext.activeDisabled, false);
+
+const focusPrev = await focusAndClick('Prev');
+check('Prev button is focusable before click', focusPrev.hadFocus, true);
+check('focus stays inside the pager after clicking Prev', focusPrev.activeInPager, true);
+check('focus never lands on a disabled control (Prev)', focusPrev.activeDisabled, false);
+
+// ── Keyboard walk: focus must follow the ROLE of the activated control ────
+// Restoring focus to the page button is not enough. If a keyboard user lands
+// on "Next", presses Enter, and focus jumps to the page-number button, the
+// second Enter re-activates the same page and does nothing — they can advance
+// exactly one page and then must Tab again. Focus must stay on Next so Enter
+// keeps walking forward (and on Prev going back).
+async function roleWalk(role, times) {
+  return evaluate(`(async () => {
+    const find = () => [...document.querySelectorAll('#package-pager .pager__btn')]
+      .find((b) => /${role}/i.test(b.textContent));
+    const steps = [];
+    for (let i = 0; i < ${times}; i += 1) {
+      const b = find();
+      if (!b) { steps.push({ missing: true }); break; }
+      if (b.disabled) { steps.push({ disabled: true, page: currentPage() }); break; }
+      b.focus();
+      const active = document.querySelector('#package-pager .pager__btn.is-active');
+      const before = active ? active.textContent.trim() : null;
+      b.click();
+      await new Promise((r) => setTimeout(r, 400));
+      const a = document.activeElement;
+      // After the click, is the activated role still usable? On the last page
+      // "Next" (and on page 1 "Prev") becomes legitimately disabled, so focus
+      // MUST fall through to another live control instead of staying there.
+      const roleAfter = find();
+      steps.push({
+        before,
+        afterPage: currentPage(),
+        roleStillEnabled: !!(roleAfter && !roleAfter.disabled),
+        // The whole point: still on a /${role}/i control, so Enter works again.
+        // NOTE: when focus falls back to <body>, body.textContent contains the
+        // pager text ("Next →"), so a bare /role/ test would false-pass. The
+        // assertions therefore also require inPager and activeTag === 'BUTTON'.
+        onRole: !!(a && /${role}/i.test(a.textContent || '')),
+        // <body> has no .disabled (undefined), so a bare !a.disabled would pass
+        // vacuously. Require a real BUTTON that is genuinely enabled.
+        onNonDisabled: !!(a && a.tagName === 'BUTTON' && !a.disabled),
+        inPager: !!(a && a.closest && a.closest('#package-pager')),
+        activeTag: a ? a.tagName : null,
+        activeDisabled: a ? a.disabled === true : null,
+      });
+    }
+    function currentPage() {
+      const el = document.querySelector('#package-pager .pager__btn.is-active');
+      return el ? el.textContent.trim() : null;
+    }
+    return steps;
+  })()`);
+}
+
+// Walk from page 1 to the end and back, keyboard-style.
+await evaluate(`(() => {
+  const first = [...document.querySelectorAll('#package-pager .pager__btn')].find((b) => b.textContent.trim() === '1');
+  if (first && !first.disabled) first.click();
+  return true;
+})()`);
+await sleep(400);
+
+const forward = await roleWalk('Next', pages - 1);
+forward.forEach((s, i) => {
+  check(`keyboard step ${i + 1}: Enter on Next advances a page`, s.afterPage, String(Math.min(i + 2, pages)));
+  // Contract: focus must be on a REAL enabled BUTTON inside the pager. It sits
+  // on the activated role while that role is still enabled; when the role
+  // legitimately becomes disabled (last page / first page) it must fall
+  // through to another live control — never to <body>.
+  check(`keyboard step ${i + 1}: focus stays on an enabled pager control`,
+    { inPager: s.inPager, tag: s.activeTag, enabled: s.activeDisabled === false },
+    { inPager: true, tag: 'BUTTON', enabled: true });
+  check(`keyboard step ${i + 1}: focus stays on the Next role while it is usable`,
+    !s.roleStillEnabled || s.onRole, true);
+});
+
+const backward = await roleWalk('Prev', pages - 1);
+backward.forEach((s, i) => {
+  check(`keyboard back ${i + 1}: Enter on Prev goes back a page`, s.afterPage, String(Math.max(pages - i - 1, 1)));
+  check(`keyboard back ${i + 1}: focus stays on an enabled pager control`,
+    { inPager: s.inPager, tag: s.activeTag, enabled: s.activeDisabled === false },
+    { inPager: true, tag: 'BUTTON', enabled: true });
+  check(`keyboard back ${i + 1}: focus stays on the Prev role while it is usable`,
+    !s.roleStillEnabled || s.onRole, true);
+});
+
+// ── Rapid double-tap (mobile user tapping Next twice quickly) ─────────────
+// Each tap is a real page advance, so a fast double-tap must land exactly two
+// pages further (clamped to the last page) — never on a half-rendered grid,
+// never past the end, and never with a duplicated or short page.
+await evaluate(`(() => { const f = [...document.querySelectorAll('#package-pager .pager__btn')].find((b) => b.textContent.trim() === '1'); if (f) f.click(); })()`);
+await sleep(600);
+const tapSeen = [];
+for (let i = 0; i < pages; i += 1) {
+  const from = await snapshot();
+  tapSeen.push(...from.slugs.filter(Boolean));
+  if (from.nextDisabled) break;
+  // Two clicks 80ms apart, the second issued before the re-render settles.
+  await evaluate(`(() => {
+    const q = () => [...document.querySelectorAll('#package-pager .pager__btn')].find((b) => /Next/i.test(b.textContent));
+    const a = q();
+    if (a && !a.disabled) a.click();
+    setTimeout(() => { const b = q(); if (b && !b.disabled) b.click(); }, 80);
+  })()`);
+  await sleep(700);
+  const to = await snapshot();
+  const expected = Math.min(Number(from.activePage) + 2, pages);
+  check(`double-tap from page ${from.activePage} lands on page ${expected}`, to.activePage, String(expected));
+  check(`double-tap landing page has ${PER_PAGE} cards`, to.cardCount, PER_PAGE);
+  const startN = (expected - 1) * PER_PAGE + 1;
+  const toN = Math.min(expected * PER_PAGE, Number(total));
+  check(`double-tap count text is correct`, to.countText, `Showing ${startN}\u2013${toN} of ${total} packages`);
+}
+check('rapid double-tap never repeats a package', tapSeen.length, new Set(tapSeen).size);
+
 // Every package exactly once
 check('no duplicate package across pages', seen.length, new Set(seen).size);
 check('every package reachable exactly once', seen.length, total);

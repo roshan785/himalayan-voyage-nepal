@@ -120,27 +120,73 @@
     }
     pager.hidden = false;
 
-    const btn = (label, page, { active = false, disabled = false, aria = '' } = {}) =>
+    const btn = (label, page, { active = false, disabled = false, aria = '', role = '' } = {}) =>
       `<button type="button" class="pager__btn${active ? ' is-active' : ''}" ` +
       `data-page="${page}"${disabled ? ' disabled' : ''} ` +
+      `${role ? `data-role="${role}" ` : ''}` +
       `${aria ? `aria-label="${aria}" ` : ''}` +
       `${active ? 'aria-current="page" ' : ''}>${label}</button>`;
 
-    const parts = [btn('\u2190 Prev', current - 1, { disabled: current <= 1, aria: 'Previous page' })];
+    const parts = [btn('\u2190 Prev', current - 1, { disabled: current <= 1, aria: 'Previous page', role: 'prev' })];
     for (const n of pageNumbers(current, pages)) {
       if (n === '\u2026') parts.push('<span class="pager__gap" aria-hidden="true">\u2026</span>');
       else parts.push(btn(String(n), n, { active: n === current, aria: `Page ${n}` }));
     }
-    parts.push(btn('Next \u2192', current + 1, { disabled: current >= pages, aria: 'Next page' }));
+    parts.push(btn('Next \u2192', current + 1, { disabled: current >= pages, aria: 'Next page', role: 'next' }));
     pager.innerHTML = `<nav class="pager" aria-label="Package pages">${parts.join('')}</nav>`;
   }
 
-  function goToPage(page) {
+  /**
+   * `true` when keyboard focus currently sits inside the pager.
+   *
+   * renderPager() assigns `pager.innerHTML = ...` on every page change, which
+   * destroys the button the user just activated. Without remembering this,
+   * document.activeElement falls back to <body> and a keyboard user is
+   * stranded — they cannot press Enter again to reach the next page. Returns
+   * null when focus lives elsewhere (e.g. the search box), so re-rendering for
+   * a filter change never steals focus.
+   */
+  function pagerHasFocus() {
+    const pager = document.getElementById('package-pager');
+    const el = document.activeElement;
+    return !!(pager && el && el !== document.body && pager.contains(el));
+  }
+
+  /**
+   * Put focus back on a live pager control after a re-render.
+   *
+   * Two cases matter, and they are different:
+   *  • The user pressed "Next"/"Prev"  → focus must return to that SAME role,
+   *    so a keyboard user can press Enter again and keep walking pages. Parking
+   *    focus on the new page-number button looks fine but silently breaks the
+   *    second Enter (it re-activates the current page).
+   *  • The user clicked a page number → focus returns to that number.
+   *
+   * A disabled control cannot take focus, so fall back to any live button
+   * rather than dropping focus to <body>.
+   */
+  function restorePagerFocus(page, role) {
+    const pager = document.getElementById('package-pager');
+    if (!pager) return;
+    const buttons = Array.from(pager.querySelectorAll('.pager__btn'));
+    const byRole = role
+      ? buttons.find((b) => !b.disabled && String(b.dataset.role || '') === role)
+      : null;
+    const byPage = buttons.find((b) => b.dataset.page === String(page) && !b.disabled);
+    const target = byRole || byPage || buttons.find((b) => !b.disabled);
+    if (target) target.focus({ preventScroll: true });
+  }
+
+  function goToPage(page, role) {
     const pages = Math.max(1, Math.ceil(state.items.length / PER_PAGE));
     const next = Math.min(Math.max(1, page), pages);
     if (next === state.page) return;
+    const refocus = pagerHasFocus();
     state.page = next;
     renderPage();
+    // The pager was just rebuilt, so re-anchor keyboard focus. preventScroll
+    // keeps the smooth scroll below intact.
+    if (refocus) restorePagerFocus(next, role);
     // Keep the grid in view after a page jump so the change is obvious.
     const grid = document.getElementById('package-grid');
     if (grid) grid.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -461,7 +507,9 @@
       pager.addEventListener('click', (e) => {
         const btn = e.target.closest('.pager__btn');
         if (!btn || btn.disabled) return;
-        goToPage(Number(btn.dataset.page) || 1);
+        // Pass the activated role so focus can return to Prev/Next after the
+        // pager is re-rendered (Enter must keep working for keyboard users).
+        goToPage(Number(btn.dataset.page) || 1, btn.dataset.role || '');
       });
     }
   }
