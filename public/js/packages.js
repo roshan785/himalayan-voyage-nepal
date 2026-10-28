@@ -9,9 +9,11 @@
   if (typeof document === 'undefined' || typeof window === 'undefined') return;
   const App = window.App;
 
-  // Packages shown per page. Four keeps the 3-column grid on one clean row +
-  // a single card on the second row, and never leaves a lone orphan row.
-  const PER_PAGE = 4;
+  // Packages shown per page. This MUST equal the column count of the listing
+  // grid on packages.html (`.grid.grid--3` -> 3 columns). With 4 the first page
+  // rendered 3 cards + one orphan on a second row and the last page held a
+  // single card (9 packages once split 4/4/1 instead of 3/3/3).
+  const PER_PAGE = 3;
 
   const state = { category: 'all', q: '', sort: '', page: 1, items: [] };
 
