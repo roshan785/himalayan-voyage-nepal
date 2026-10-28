@@ -83,3 +83,33 @@ byte-identical.
 - Backup of the edited file: `public/js/packages.js.bak_pagination_<epoch>`
 - Commands: `npm ci` → `PORT=4611 node server.js` →
   `node tests/pagination.test.mjs http://127.0.0.1:4611/packages.html` → `npm test`
+
+### (e) Follow-up — the browser test itself was fragile (fixed 2026-10-28)
+The first CDP run against the live Render URL reported a false failure
+("card exposes a detail link"). The page was fine; the *test* was wrong.
+
+**Root cause:** `App.skeletonCards()` (public/js/main.js:347) paints loading
+placeholders that also carry `class="card"`. The probe waited for
+`#package-grid .card` — satisfied by the skeletons — then ran fixed
+`setTimeout(1600)` waits. On Render a cold start outran the sleep, so the probe
+inspected placeholder markup that legitimately has no links, and counted 6
+"cards" because a real card carries two slug links (cover `.desti-cta` and
+`.btn--primary`).
+
+**Fix (tests only, no product code touched):**
+- a real card = `.card` containing `a[href*="slug="]`; count cards, not anchors
+- `goto()` waits for that condition instead of `readyState` alone
+- every fixed `sleep()` replaced with `waitUntil(expr)` / `settle()` polling
+
+**Evidence — live site (https://himalayan-voyage-nepal-0sem.onrender.com):**
+- `tests/pagination-cdp.mjs` → PASS, 26/26 checks, no JS errors
+- `tests/features-cdp.mjs`  → PASS, 19/19 checks (search, tabs, sort, detail)
+- `?category=trekking` / `international` / `domestic` → PASS, pager correctly
+  hidden when everything fits on one page
+- `npm test` → **100 passed, 0 failed**
+- live asset check: `packages.html` loads `js/packages.js?v=pg2a`, and that file
+  serves `PER_PAGE = 3`
+
+**Rule:** a browser test must wait for the *state it asserts on*, never for a
+duration; and it must assert on the same thing the user sees (real cards), not
+on a class also used by placeholders.
